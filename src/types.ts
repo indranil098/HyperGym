@@ -80,6 +80,8 @@ export type Receipt = {
   setCount: number;
   volume: number;
   names: string[];
+  /** Absent on receipts persisted before PR detection existed. */
+  prs?: PrGain[];
 };
 
 export type AssistantDraft = {
@@ -131,6 +133,41 @@ export type Thread = {
   at: number;
   updatedAt: number;
   messages: ChatMessage[];
+};
+
+export type SessionSet = SetEntry & { done: boolean; at: number };
+
+export type SessionExercise = {
+  id: string;
+  name: string;
+  exerciseKey: string;
+  sets: SessionSet[];
+  restSec: number;
+  notes?: string;
+  lastSummary?: string;
+};
+
+export type ActiveSession = {
+  id: string;
+  startedAt: number;
+  exercises: SessionExercise[];
+  notes?: string;
+};
+
+export type Rest = {
+  startedAt: number;
+  endsAt: number;
+  durationSec: number;
+};
+
+export type Stopwatch = {
+  startedAt: number;
+};
+
+export type PrGain = {
+  name: string;
+  previous: number;
+  value: number;
 };
 
 export type Unit = 'kg' | 'lb';

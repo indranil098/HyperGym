@@ -110,8 +110,6 @@ export function Composer({ onSend, busy, onStop, status }: Props) {
                   height: 28,
                   borderRadius: 14,
                   backgroundColor: color.ink3,
-                  borderWidth: 1,
-                  borderColor: color.line,
                 }}
                 hitSlop={10}
                 onPress={() =>
@@ -177,8 +175,6 @@ export function Composer({ onSend, busy, onStop, status }: Props) {
             height: 56,
             borderRadius: radius.pill,
             backgroundColor: busy ? color.ink2 : canSend ? color.volt : color.ink2,
-            borderWidth: busy ? 1 : 0,
-            borderColor: color.line,
           }}
         >
           {busy ? (

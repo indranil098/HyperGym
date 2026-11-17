@@ -45,6 +45,8 @@ export function hasSetData(set: SetEntry): boolean {
   );
 }
 
+export const hasValue = hasSetData;
+
 export function meaningfulSets(sets: SetEntry[]): SetEntry[] {
   return sets.filter(hasSetData);
 }

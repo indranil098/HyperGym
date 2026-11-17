@@ -21,12 +21,6 @@ export type Palette = {
   voltInk: string;
   scrim: string;
   glass: string;
-  glassRim: string;
-  glassRimSoft: string;
-  /** Gradient stops need numeric alpha: react-native-svg ignores rgba() alpha. */
-  glassLift: number;
-  glassSink: number;
-  glassGlint: number;
 };
 
 const PALETTES: Record<ThemeName, Palette> = {
@@ -43,12 +37,7 @@ const PALETTES: Record<ThemeName, Palette> = {
     volt: '#C9FA4B',
     voltInk: '#0A0A0B',
     scrim: 'rgba(0,0,0,0.72)',
-    glass: 'rgba(14,14,16,0.90)',
-    glassRim: 'rgba(255,255,255,0.32)',
-    glassRimSoft: 'rgba(255,255,255,0.10)',
-    glassLift: 0.16,
-    glassSink: 0.03,
-    glassGlint: 0.18,
+    glass: '#0A0A0B',
   },
   green: {
     ink: '#C9FA4B',
@@ -63,12 +52,7 @@ const PALETTES: Record<ThemeName, Palette> = {
     volt: '#0A0A0B',
     voltInk: '#C9FA4B',
     scrim: 'rgba(10,20,0,0.55)',
-    glass: 'rgba(201,250,75,0.92)',
-    glassRim: 'rgba(255,255,255,0.75)',
-    glassRimSoft: 'rgba(255,255,255,0.30)',
-    glassLift: 0.55,
-    glassSink: 0.10,
-    glassGlint: 0.45,
+    glass: '#BEEE42',
   },
   light: {
     ink: '#FFFFFF',
@@ -83,12 +67,7 @@ const PALETTES: Record<ThemeName, Palette> = {
     volt: '#0A0A0B',
     voltInk: '#FFFFFF',
     scrim: 'rgba(0,0,0,0.45)',
-    glass: 'rgba(255,255,255,0.94)',
-    glassRim: 'rgba(255,255,255,0.95)',
-    glassRimSoft: 'rgba(10,10,11,0.10)',
-    glassLift: 0.30,
-    glassSink: 0.06,
-    glassGlint: 0.55,
+    glass: '#F6F6F7',
   },
 };
 
@@ -229,8 +208,6 @@ export const surface = {
     return {
       backgroundColor: color.ink1,
       borderRadius: radius.card,
-      borderWidth: 1,
-      borderColor: color.line,
     };
   },
   get inset(): ViewStyle {
@@ -240,8 +217,6 @@ export const surface = {
     return {
       backgroundColor: color.glass,
       borderRadius: radius.card,
-      borderWidth: 1,
-      borderColor: color.line,
     };
   },
 } as const;

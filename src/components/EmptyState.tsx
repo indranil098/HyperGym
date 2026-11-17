@@ -23,8 +23,6 @@ export function EmptyState({ icon, title, body, children }: Props) {
           height: 76,
           borderRadius: 26,
           backgroundColor: color.ink1,
-          borderWidth: 1,
-          borderColor: color.line,
           alignItems: 'center',
           justifyContent: 'center',
           marginBottom: space.lg,

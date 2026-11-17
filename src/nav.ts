@@ -4,6 +4,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 export type TabParamList = {
   Chat: undefined;
+  Train: undefined;
   Log: undefined;
   Routines: undefined;
   Settings: undefined;

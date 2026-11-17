@@ -138,8 +138,6 @@ export function ExerciseScreen() {
                     key={chip.label}
                     style={{
                       backgroundColor: color.ink1,
-                      borderWidth: 1,
-                      borderColor: color.line,
                       borderRadius: radius.row,
                       paddingHorizontal: space.sm,
                       paddingVertical: space.xxs,

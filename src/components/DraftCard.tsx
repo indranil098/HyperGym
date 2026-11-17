@@ -3,6 +3,7 @@ import { Text, TextInput, View } from 'react-native';
 import { color, layout, radius, space, surface, type } from '../theme';
 import { confirm as hapticConfirm, tap } from '../lib/feedback';
 import { dayLabel, relativeDays } from '../lib/date';
+import { nextTarget } from '../lib/insights';
 import {
   exerciseKey as makeExerciseKey,
   groupDigits,
@@ -231,6 +232,9 @@ export function DraftCard({ message, unit }: Props) {
           ? lastPerformance(dayList, exercise.exerciseKey, draft.date)
           : undefined;
         const previousSummary = previous ? summarizeEntry(previous.entry, unit) : null;
+        const target = exercise.exerciseKey
+          ? nextTarget(days, exercise.exerciseKey, draft.date)
+          : null;
 
         return (
           <View key={exerciseIndex} style={{ marginBottom: space.lg }}>
@@ -260,6 +264,12 @@ export function DraftCard({ message, unit }: Props) {
             {previous && previousSummary ? (
               <Text style={[type.micro, { marginBottom: space.xxs }]}>
                 Last {relativeDays(previous.date)}, {previousSummary.headline ?? previousSummary.detail}
+              </Text>
+            ) : null}
+
+            {target ? (
+              <Text style={[type.micro, { marginBottom: space.xxs, color: color.volt }]}>
+                Try {target.headline}
               </Text>
             ) : null}
 

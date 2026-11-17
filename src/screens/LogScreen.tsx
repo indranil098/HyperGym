@@ -20,6 +20,7 @@ import {
   weeklySetsByGroup,
 } from '../lib/stats';
 import { exerciseKind } from '../lib/exerciseKind';
+import { streak, weekSummary } from '../lib/insights';
 import { useAppStore } from '../store/useAppStore';
 import type { LogNav } from '../nav';
 import { EmptyState } from '../components/EmptyState';
@@ -74,12 +75,20 @@ export function LogScreen() {
     : 0;
   const weekly = weeklySetsByGroup(Object.values(days));
   const weeklyMax = weekly.reduce((max, item) => Math.max(max, item.sets), 0);
+  const runStreak = streak(days);
+  const thisWeek = weekSummary(days, 0);
+  const lastWeek = weekSummary(days, 1);
+  const volumeDelta = thisWeek.volume - lastWeek.volume;
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: color.ink }}>
       <ScreenHeader
         title="Log"
-        meta={keys.length === 0 ? 'Nothing logged yet' : `${countLabel(keys.length, 'session')} on record`}
+        meta={
+          keys.length === 0
+            ? 'Nothing logged yet'
+            : `${countLabel(keys.length, 'session')} on record${runStreak > 1 ? ` · ${runStreak} day streak` : ''}`
+        }
       />
 
       <ScrollView
@@ -89,6 +98,28 @@ export function LogScreen() {
           paddingBottom: space.xxxl + layout.tabBarHeight,
         }}
       >
+        {thisWeek.sessions > 0 || lastWeek.sessions > 0 ? (
+          <View
+            style={[surface.card, { padding: layout.cardPad, marginBottom: space.lg }]}
+          >
+            <Text style={[type.label, { marginBottom: space.xs }]}>This week</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.xs }}>
+              <Text style={type.numeral}>{groupDigits(unit === 'kg' ? thisWeek.volume : thisWeek.volume / 0.45359237)}</Text>
+              <Text style={[type.label, { marginBottom: 12 }]}>{unit} lifted</Text>
+            </View>
+            <Text style={type.micro}>
+              {countLabel(thisWeek.sessions, 'session')}, {countLabel(thisWeek.sets, 'set')}
+              {lastWeek.sessions > 0
+                ? volumeDelta === 0
+                  ? ' · same volume as last week'
+                  : ` · ${volumeDelta > 0 ? '+' : ''}${groupDigits(
+                      unit === 'kg' ? volumeDelta : volumeDelta / 0.45359237,
+                    )} ${unit} vs last week`
+                : ''}
+            </Text>
+          </View>
+        ) : null}
+
         <View style={[surface.card, { paddingHorizontal: space.xs, paddingVertical: space.md, marginBottom: space.lg }]}>
           <View
             style={{
@@ -141,8 +172,6 @@ export function LogScreen() {
                       height: 46,
                       borderRadius: 12,
                       backgroundColor: isSelected ? color.ink2 : 'transparent',
-                      borderWidth: isSelected ? 1 : 0,
-                      borderColor: color.line,
                     }}
                   >
                     <Text

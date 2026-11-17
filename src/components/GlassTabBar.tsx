@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, Text, View } from 'react-native';
+import { Animated, Pressable, Text, View } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { color, layout, radius, space, type } from '../theme';
 import { tap } from '../lib/feedback';
 import { useReduceMotion } from '../lib/motion';
+import { useAppStore } from '../store/useAppStore';
 import { Glass } from './Glass';
 import { Icon } from './Icon';
-import { ChatIcon, DumbbellIcon, ListIcon, SettingsIcon } from './icons';
+import { ChatIcon, DumbbellIcon, ListIcon, SettingsIcon, StopwatchIcon } from './icons';
 
 const GLYPHS = {
   Chat: ChatIcon,
+  Train: StopwatchIcon,
   Log: DumbbellIcon,
   Routines: ListIcon,
   Settings: SettingsIcon,
@@ -17,6 +19,7 @@ const GLYPHS = {
 
 const LABELS = {
   Chat: 'Chat',
+  Train: 'Train',
   Log: 'Log',
   Routines: 'Routines',
   Settings: 'Settings',
@@ -38,12 +41,27 @@ export function GlassTabBar({ state, navigation, insets }: BottomTabBarProps) {
   const count = state.routes.length;
   const cell = count > 0 ? track / count : 0;
   const lensWidth = Math.max(0, cell - LENS_INSET * 2);
+  const sessionRunning = useAppStore(state => Boolean(state.session));
+  const setActiveTab = useAppStore(state => state.setActiveTab);
+  const focusedName = state.routes[state.index]?.name;
 
   useEffect(() => {
-    Animated.timing(slide, {
+    if (focusedName) {
+      setActiveTab(focusedName);
+    }
+  }, [focusedName, setActiveTab]);
+
+  useEffect(() => {
+    if (reduce) {
+      slide.setValue(state.index);
+      return;
+    }
+    // Spring rather than timing: the slight overshoot is what makes the lens
+    // read as liquid instead of a rectangle sliding on rails.
+    Animated.spring(slide, {
       toValue: state.index,
-      duration: reduce ? 0 : 340,
-      easing: Easing.out(Easing.exp),
+      friction: 8,
+      tension: 70,
       useNativeDriver: true,
     }).start();
   }, [state.index, slide, reduce]);
@@ -90,8 +108,6 @@ export function GlassTabBar({ state, navigation, insets }: BottomTabBarProps) {
                 borderRadius: radius.pill,
                 backgroundColor: color.paper,
                 opacity: 0.1,
-                borderWidth: 1,
-                borderColor: color.glassRim,
                 transform: [
                   {
                     translateX: slide.interpolate({
@@ -135,12 +151,27 @@ export function GlassTabBar({ state, navigation, insets }: BottomTabBarProps) {
                 accessibilityLabel={label}
                 style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3 }}
               >
-                <Icon
-                  icon={glyph}
-                  size={ICON_SIZE}
-                  tone={focused ? 'volt' : 'faint'}
-                  stroke={focused ? 2.1 : 1.75}
-                />
+                <View>
+                  <Icon
+                    icon={glyph}
+                    size={ICON_SIZE}
+                    tone={focused ? 'volt' : 'faint'}
+                    stroke={focused ? 2.1 : 1.75}
+                  />
+                  {route.name === 'Train' && sessionRunning ? (
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: -2,
+                        right: -6,
+                        width: 7,
+                        height: 7,
+                        borderRadius: 4,
+                        backgroundColor: color.volt,
+                      }}
+                    />
+                  ) : null}
+                </View>
                 <Text
                   numberOfLines={1}
                   style={[

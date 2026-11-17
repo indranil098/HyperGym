@@ -35,8 +35,6 @@ export function Chip({ label, onPress, accent = false }: Props) {
           paddingHorizontal: space.md,
           borderRadius: radius.pill,
           backgroundColor: accent ? color.volt : color.ink2,
-          borderWidth: 1,
-          borderColor: accent ? color.volt : color.line,
         }}
       >
         {body}
@@ -57,8 +55,6 @@ export function Chip({ label, onPress, accent = false }: Props) {
         paddingHorizontal: space.md,
         borderRadius: radius.pill,
         backgroundColor: accent ? color.volt : color.ink2,
-        borderWidth: 1,
-        borderColor: accent ? color.volt : color.line,
       }}
     >
       {body}

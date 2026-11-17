@@ -58,8 +58,7 @@ export function GhostButton({ label, onPress, icon, disabled }: Props) {
         gap: space.xs,
         paddingHorizontal: space.md,
         borderRadius: radius.pill,
-        borderWidth: 1,
-        borderColor: color.line,
+        backgroundColor: color.ink2,
       }}
     >
       {icon ? <Icon icon={icon} size={22} tone="dim" /> : null}

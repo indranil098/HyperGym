@@ -10,6 +10,7 @@ import {
 import { fallbackChain, modelShort } from '../ai/models';
 import { SYSTEM_PROMPT } from '../ai/prompt';
 import { TOOLS } from '../ai/tools';
+import { streak } from '../lib/insights';
 import { uid } from '../lib/id';
 import { useAppStore } from '../store/useAppStore';
 import type { AttachedImage, ChatMessage, Draft, WorkoutDay } from '../types';
@@ -21,6 +22,13 @@ import {
   type Clarification,
 } from './parseDraft';
 import { resolveDeleteRequest } from './actions';
+import {
+  lastPerformance,
+  summarizeEntry,
+  trackedExercises,
+  weeklySetsByGroup,
+} from '../lib/stats';
+import { dayKey, dayLabel } from '../lib/date';
 
 function setSummary(set: { reps?: number; weightKg?: number; durationSec?: number; inclinePct?: number }): string {
   const parts: string[] = [];
@@ -51,23 +59,57 @@ function describeDraft(draft: Draft): string {
     .join('; ');
 }
 
-function logContext(days: Record<string, WorkoutDay>): string {
-  const keys = Object.keys(days).sort().slice(-3);
-  if (keys.length === 0) {
-    return '';
+/**
+ * Everything the coach needs to be useful, built from analytics that already
+ * existed but were never surfaced. Injected as text rather than a tool call:
+ * the free models in the fallback chain are unreliable at multi-turn tool
+ * loops, and injection needs no protocol change.
+ */
+function coachContext(days: Record<string, WorkoutDay>): string {
+  const sections: string[] = [];
+  sections.push(`Today is ${dayKey()}. Streak: ${streak(days)} day(s) with a session.`);
+
+  const weekly = weeklySetsByGroup(Object.values(days));
+  if (weekly.length > 0) {
+    sections.push(
+      `Hard sets per muscle group, last 7 days: ${weekly
+        .map(item => `${item.group} ${item.sets}`)
+        .join(', ')}.`,
+    );
   }
-  const lines = keys.map(key => {
-    const day = days[key];
-    const items = day.entries.map(entry => {
-      const sets = entry.sets
-        .map(setSummary)
-        .filter(Boolean)
-        .join(' ');
-      return `${entry.name}${sets ? ` ${sets}` : ''}`;
+
+  const tracked = trackedExercises(Object.values(days)).slice(0, 14);
+  if (tracked.length > 0) {
+    const lines = tracked.map(item => {
+      const last = lastPerformance(Object.values(days), item.key);
+      const lastBit = last ? `last ${summarizeEntry(last.entry, 'kg').detail || 'no numbers'}` : 'never';
+      return `- ${item.name}: best est. 1RM ${Math.round(item.record)} kg, ${lastBit}`;
     });
-    return `${key}: ${items.join('; ')}`;
-  });
-  return `Member's last logged sessions, for context only. Do not repeat these back unprompted.\n${lines.join('\n')}`;
+    sections.push(`Exercises on record:\n${lines.join('\n')}`);
+  }
+
+  const keys = Object.keys(days)
+    .sort()
+    .slice(-3);
+  if (keys.length > 0) {
+    const lines = keys.map(key => {
+      const day = days[key];
+      const items = day.entries.map(entry => {
+        const sets = entry.sets
+          .map(setSummary)
+          .filter(Boolean)
+          .join(' ');
+        return `${entry.name}${sets ? ` ${sets}` : ''}`;
+      });
+      return `${key} (${dayLabel(key)}): ${items.join('; ')}`;
+    });
+    sections.push(`Last sessions:\n${lines.join('\n')}`);
+  }
+
+  if (sections.length === 0) {
+    return 'COACH CONTEXT: the log is empty. Nothing has been recorded yet.';
+  }
+  return `COACH CONTEXT\n${sections.join('\n\n')}`;
 }
 
 function toWire(chat: ChatMessage[], days: Record<string, WorkoutDay>): WireMessage[] {
@@ -80,7 +122,7 @@ function toWire(chat: ChatMessage[], days: Record<string, WorkoutDay>): WireMess
   );
 
   const wire: WireMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }];
-  const context = logContext(days);
+  const context = coachContext(days);
   if (context) {
     wire.push({ role: 'system', content: context });
   }

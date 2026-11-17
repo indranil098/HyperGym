@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Animated, Image, Text, View } from 'react-native';
 import { color, radius, space, type } from '../theme';
 import { useEntrance } from '../lib/motion';
@@ -13,7 +14,11 @@ type Props = {
   onAnswer: (answer: string) => void;
 };
 
-export function MessageBubble({ message, unit, onAnswer }: Props) {
+/**
+ * Memoised so a streaming token patch re-renders one bubble instead of the
+ * whole thread. Every prop must stay referentially stable for that to hold.
+ */
+function MessageBubbleInner({ message, unit, onAnswer }: Props) {
   const entrance = useEntrance();
 
   if (message.role === 'user') {
@@ -97,8 +102,10 @@ export function MessageBubble({ message, unit, onAnswer }: Props) {
   }
 
   return (
-    <View style={{ marginTop: space.lg }}>
+    <View style={{ marginTop: space.md }}>
       <StreamedText text={message.text} streaming={message.streaming} />
     </View>
   );
 }
+
+export const MessageBubble = memo(MessageBubbleInner);

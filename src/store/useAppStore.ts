@@ -1,16 +1,23 @@
 import { create } from 'zustand';
 import type {
+  ActiveSession,
   ChatMessage,
   LoggedExercise,
+  PrGain,
   Receipt,
+  Rest,
   Routine,
+  SessionExercise,
+  SetEntry,
   Settings,
+  Stopwatch,
   Thread,
   WorkoutDay,
 } from '../types';
 import { KEYS, clearAll, createSaver, loadJSON } from '../lib/storage';
 import { dayKey } from '../lib/date';
-import { entryVolume, exerciseKey, meaningfulSets } from '../lib/stats';
+import { entryBestE1rm, entryVolume, exerciseKey, hasValue, meaningfulSets, personalRecord } from '../lib/stats';
+import { sessionToDay } from '../lib/session';
 import { uid } from '../lib/id';
 import { DEFAULT_MODEL, MODELS } from '../ai/models';
 import { applyTheme } from '../theme';
@@ -32,6 +39,9 @@ const saveDays = createSaver(KEYS.days);
 const saveChat = createSaver(KEYS.chat);
 const saveThreads = createSaver(KEYS.threads);
 const saveActiveThread = createSaver(KEYS.activeThread);
+const saveSession = createSaver(KEYS.session, 200);
+const saveRest = createSaver(KEYS.rest, 200);
+const saveStopwatch = createSaver(KEYS.stopwatch, 200);
 const saveRoutines = createSaver(KEYS.routines);
 const saveSettings = createSaver(KEYS.settings);
 
@@ -76,7 +86,14 @@ type State = {
   activeThreadId: string;
   routines: Routine[];
   settings: Settings;
+  session: ActiveSession | null;
+  rest: Rest | null;
+  stopwatch: Stopwatch | null;
+  /** Focused tab name, used to suppress the rest dock on the session screen. */
+  activeTab: string;
 };
+
+const DEFAULT_REST_SEC = 90;
 
 type Actions = {
   hydrate: () => Promise<void>;
@@ -97,6 +114,21 @@ type Actions = {
   deleteEntry: (key: string, entryId: string) => void;
   saveRoutine: (name: string, items: Routine['items']) => void;
   deleteRoutine: (id: string) => void;
+  startSession: (seed?: SessionExercise[]) => void;
+  addSessionExercise: (name: string, restSec?: number) => void;
+  removeSessionExercise: (id: string) => void;
+  logSessionSet: (exerciseId: string, set: SetEntry, restSec?: number) => void;
+  updateSessionSet: (exerciseId: string, index: number, patch: Partial<SetEntry>) => void;
+  removeSessionSet: (exerciseId: string, index: number) => void;
+  setSessionNotes: (notes: string) => void;
+  finishSession: () => Receipt | null;
+  cancelSession: () => void;
+  startRest: (sec: number) => void;
+  skipRest: () => void;
+  extendRest: (sec: number) => void;
+  startStopwatch: () => void;
+  stopStopwatch: () => void;
+  setActiveTab: (name: string) => void;
   wipe: () => Promise<void>;
 };
 
@@ -121,16 +153,24 @@ export const useAppStore = create<State & Actions>()((set, get) => {
     activeThreadId: '',
     routines: [],
     settings: DEFAULT_SETTINGS,
+    session: null,
+    rest: null,
+    stopwatch: null,
+    activeTab: 'Chat',
 
     hydrate: async () => {
-      const [days, chat, storedThreads, storedActive, routines, settings] = await Promise.all([
-        loadJSON<Record<string, WorkoutDay>>(KEYS.days, {}),
-        loadJSON<ChatMessage[]>(KEYS.chat, []),
-        loadJSON<Thread[]>(KEYS.threads, []),
-        loadJSON<string>(KEYS.activeThread, ''),
-        loadJSON<Routine[]>(KEYS.routines, []),
-        loadJSON<Partial<Settings>>(KEYS.settings, {}),
-      ]);
+      const [days, chat, storedThreads, storedActive, routines, settings, session, rest, stopwatch] =
+        await Promise.all([
+          loadJSON<Record<string, WorkoutDay>>(KEYS.days, {}),
+          loadJSON<ChatMessage[]>(KEYS.chat, []),
+          loadJSON<Thread[]>(KEYS.threads, []),
+          loadJSON<string>(KEYS.activeThread, ''),
+          loadJSON<Routine[]>(KEYS.routines, []),
+          loadJSON<Partial<Settings>>(KEYS.settings, {}),
+          loadJSON<ActiveSession | null>(KEYS.session, null),
+          loadJSON<Rest | null>(KEYS.rest, null),
+          loadJSON<Stopwatch | null>(KEYS.stopwatch, null),
+        ]);
       const merged = { ...DEFAULT_SETTINGS, ...settings };
       if (!MODELS.some(model => model.id === merged.model)) {
         merged.model = DEFAULT_MODEL;
@@ -156,6 +196,9 @@ export const useAppStore = create<State & Actions>()((set, get) => {
         activeThreadId: active,
         routines,
         settings: merged,
+        session: session ?? null,
+        rest: rest ?? null,
+        stopwatch: stopwatch ?? null,
         hydrated: true,
       });
       saveThreads(forStorageThreads(threads));
@@ -284,6 +327,16 @@ export const useAppStore = create<State & Actions>()((set, get) => {
       };
 
       const days = { ...get().days, [date]: day };
+
+      const prs: PrGain[] = [];
+      for (const entry of finalEntries) {
+        const previous = personalRecord(Object.values(get().days), entry.exerciseKey);
+        const best = entryBestE1rm(entry);
+        if (best > previous) {
+          prs.push({ name: entry.name, previous, value: best });
+        }
+      }
+
       const receipt: Receipt = {
         dayKey: date,
         entryIds: finalEntries.map(entry => entry.id),
@@ -291,6 +344,7 @@ export const useAppStore = create<State & Actions>()((set, get) => {
         setCount: finalEntries.reduce((sum, entry) => sum + entry.sets.length, 0),
         volume: finalEntries.reduce((sum, entry) => sum + entryVolume(entry), 0),
         names: finalEntries.map(entry => entry.name),
+        prs,
       };
 
       const chat = get().chat.map(item =>
@@ -428,10 +482,252 @@ export const useAppStore = create<State & Actions>()((set, get) => {
       saveRoutines(routines);
     },
 
+    startSession: seed => {
+      const session: ActiveSession = {
+        id: uid('s'),
+        startedAt: Date.now(),
+        exercises: seed ? seed.map(exercise => ({ ...exercise })) : [],
+      };
+      set({ session, rest: null });
+      saveSession(session);
+      saveRest(null);
+    },
+
+    addSessionExercise: (name, restSec = DEFAULT_REST_SEC) => {
+      const session = get().session;
+      if (!session) {
+        return;
+      }
+      const trimmed = name.trim();
+      if (!trimmed) {
+        return;
+      }
+      const next: ActiveSession = {
+        ...session,
+        exercises: [
+          ...session.exercises,
+          {
+            id: uid('x'),
+            name: trimmed,
+            exerciseKey: exerciseKey(trimmed),
+            sets: [],
+            restSec,
+          },
+        ],
+      };
+      set({ session: next });
+      saveSession(next);
+    },
+
+    removeSessionExercise: id => {
+      const session = get().session;
+      if (!session) {
+        return;
+      }
+      const next: ActiveSession = {
+        ...session,
+        exercises: session.exercises.filter(exercise => exercise.id !== id),
+      };
+      set({ session: next });
+      saveSession(next);
+    },
+
+    logSessionSet: (exerciseId, setEntry, restSec) => {
+      const { session } = get();
+      if (!session) {
+        return;
+      }
+      const now = Date.now();
+      let startedRest: Rest | null = null;
+
+      const next: ActiveSession = {
+        ...session,
+        exercises: session.exercises.map(exercise => {
+          if (exercise.id !== exerciseId) {
+            return exercise;
+          }
+          const duration = restSec ?? exercise.restSec ?? DEFAULT_REST_SEC;
+          startedRest = { startedAt: now, endsAt: now + duration * 1000, durationSec: duration };
+          return {
+            ...exercise,
+            sets: [
+              ...exercise.sets.filter(entry => entry.done || hasValue(entry)),
+              { ...setEntry, done: true, at: now },
+            ],
+          };
+        }),
+      };
+
+      set({ session: next, rest: startedRest });
+      saveSession(next);
+      if (startedRest) {
+        saveRest(startedRest);
+      }
+    },
+
+    updateSessionSet: (exerciseId, index, patch) => {
+      const session = get().session;
+      if (!session) {
+        return;
+      }
+      const next: ActiveSession = {
+        ...session,
+        exercises: session.exercises.map(exercise =>
+          exercise.id === exerciseId
+            ? {
+                ...exercise,
+                sets: exercise.sets.map((entry, position) =>
+                  position === index ? { ...entry, ...patch } : entry,
+                ),
+              }
+            : exercise,
+        ),
+      };
+      set({ session: next });
+      saveSession(next);
+    },
+
+    removeSessionSet: (exerciseId, index) => {
+      const session = get().session;
+      if (!session) {
+        return;
+      }
+      const next: ActiveSession = {
+        ...session,
+        exercises: session.exercises.map(exercise =>
+          exercise.id === exerciseId
+            ? { ...exercise, sets: exercise.sets.filter((_, position) => position !== index) }
+            : exercise,
+        ),
+      };
+      set({ session: next });
+      saveSession(next);
+    },
+
+    setSessionNotes: notes => {
+      const session = get().session;
+      if (!session) {
+        return;
+      }
+      const next: ActiveSession = { ...session, notes };
+      set({ session: next });
+      saveSession(next);
+    },
+
+    finishSession: () => {
+      const { session } = get();
+      if (!session) {
+        return null;
+      }
+      const day = sessionToDay(session);
+      if (!day) {
+        return null;
+      }
+
+      const before = get().days;
+      const prs: PrGain[] = [];
+      for (const entry of day.entries) {
+        const previous = personalRecord(Object.values(before), entry.exerciseKey);
+        const best = entryBestE1rm(entry);
+        if (best > previous) {
+          prs.push({ name: entry.name, previous, value: best });
+        }
+      }
+
+      const existing = before[day.date];
+      const mergedDay: WorkoutDay = existing
+        ? {
+            ...existing,
+            entries: [...existing.entries, ...day.entries],
+            notes: existing.notes ?? day.notes,
+            updatedAt: Date.now(),
+          }
+        : day;
+
+      const days = { ...before, [day.date]: mergedDay };
+
+      set({ days, session: null, rest: null });
+      saveDays(days);
+      saveSession(null);
+      saveRest(null);
+
+      const workingSets = mergedDay.entries.reduce(
+        (sum, entry) => sum + meaningfulSets(entry.sets).length,
+        0,
+      );
+      return {
+        dayKey: day.date,
+        entryIds: day.entries.map(entry => entry.id),
+        exerciseCount: day.entries.length,
+        setCount: workingSets,
+        volume: day.entries.reduce((sum, entry) => sum + entryVolume(entry), 0),
+        names: day.entries.map(entry => entry.name),
+        prs,
+      };
+    },
+
+    cancelSession: () => {
+      set({ session: null, rest: null });
+      saveSession(null);
+      saveRest(null);
+    },
+
+    startRest: sec => {
+      const now = Date.now();
+      const rest: Rest = { startedAt: now, endsAt: now + sec * 1000, durationSec: sec };
+      set({ rest });
+      saveRest(rest);
+    },
+
+    skipRest: () => {
+      set({ rest: null });
+      saveRest(null);
+    },
+
+    extendRest: sec => {
+      const rest = get().rest;
+      if (!rest) {
+        return;
+      }
+      const next: Rest = {
+        ...rest,
+        endsAt: Math.max(rest.endsAt, Date.now()) + sec * 1000,
+        durationSec: rest.durationSec + sec,
+      };
+      set({ rest: next });
+      saveRest(next);
+    },
+
+    startStopwatch: () => {
+      const stopwatch: Stopwatch = { startedAt: Date.now() };
+      set({ stopwatch });
+      saveStopwatch(stopwatch);
+    },
+
+    stopStopwatch: () => {
+      set({ stopwatch: null });
+      saveStopwatch(null);
+    },
+
+    setActiveTab: name => {
+      if (get().activeTab !== name) {
+        set({ activeTab: name });
+      }
+    },
+
     wipe: async () => {
       await clearAll();
       const thread = emptyThread();
-      set({ days: {}, chat: [], threads: [thread], activeThreadId: thread.id, routines: [] });
+      set({
+        days: {},
+        chat: [],
+        threads: [thread],
+        activeThreadId: thread.id,
+        routines: [],
+        session: null,
+        rest: null,
+        stopwatch: null,
+      });
       saveThreads([thread]);
       saveActiveThread(thread.id);
     },

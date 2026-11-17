@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import {
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { color, layout, radius, space, type } from '../theme';
 import { useAppStore } from '../store/useAppStore';
@@ -36,18 +42,37 @@ export function ChatScreen() {
   const insets = useSafeAreaInsets();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Auto-scroll only while the reader is already at the bottom, so a streaming
+  // reply never yanks them back up out of their own scrollback.
+  const nearBottomRef = useRef(true);
+
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const distance = contentSize.height - layoutMeasurement.height - contentOffset.y;
+    nearBottomRef.current = distance < 80;
+  }, []);
+
+  const stickToBottom = useCallback(() => {
+    if (nearBottomRef.current) {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }
+  }, []);
+
   useEffect(() => {
-    const timer = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 90);
+    if (!nearBottomRef.current) {
+      return;
+    }
+    const timer = setTimeout(stickToBottom, 90);
     return () => clearTimeout(timer);
-  }, [chat]);
+  }, [chat, stickToBottom]);
 
   useEffect(() => {
     if (keyboardInset <= 0) {
       return;
     }
-    const timer = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 140);
+    const timer = setTimeout(stickToBottom, 140);
     return () => clearTimeout(timer);
-  }, [keyboardInset]);
+  }, [keyboardInset, stickToBottom]);
 
   const send = useCallback(
     (text: string) => {
@@ -99,8 +124,6 @@ export function ChatScreen() {
             marginBottom: space.xs,
             backgroundColor: color.ink1,
             borderRadius: radius.row,
-            borderWidth: 1,
-            borderColor: color.line,
             paddingVertical: space.xs,
             paddingLeft: space.sm,
             paddingRight: space.xxs,
@@ -125,7 +148,8 @@ export function ChatScreen() {
           paddingBottom: space.lg,
           flexGrow: 1,
         }}
-        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+        onScroll={handleScroll}
+        scrollEventThrottle={64}
         keyboardShouldPersistTaps="handled"
       >
         {chat.length === 0 ? (

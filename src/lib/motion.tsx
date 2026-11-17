@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, Animated, Easing, type ViewStyle } from 'react-native';
 import { useAppStore } from '../store/useAppStore';
 
@@ -14,9 +14,13 @@ export const curve = {
   exit: Easing.in(Easing.quad),
 } as const;
 
-export function useReduceMotion(): boolean {
+/**
+ * One subscription to the system reduce-motion setting for the whole app.
+ * Previously every component that animated registered its own listener, so a
+ * 200-message thread held 200 identical subscriptions.
+ */
+export function MotionProvider({ children }: { children: ReactNode }) {
   const [systemReduce, setSystemReduce] = useState(false);
-  const preference = useAppStore(state => state.settings.motion);
 
   useEffect(() => {
     let alive = true;
@@ -32,6 +36,15 @@ export function useReduceMotion(): boolean {
     };
   }, []);
 
+  return <SystemMotion.Provider value={systemReduce}>{children}</SystemMotion.Provider>;
+}
+
+const SystemMotion = createContext(false);
+
+export function useReduceMotion(): boolean {
+  const systemReduce = useContext(SystemMotion);
+  const preference = useAppStore(state => state.settings.motion);
+
   if (preference === 'reduced') {
     return true;
   }
@@ -39,10 +52,6 @@ export function useReduceMotion(): boolean {
     return false;
   }
   return systemReduce;
-}
-
-export function stagger(index: number, step = 20): number {
-  return index * step + (((index * 37) % 11) - 5);
 }
 
 export function useEntrance(delay = 0): { style: Animated.WithAnimatedValue<ViewStyle> } {
@@ -70,15 +79,9 @@ export function useEntrance(delay = 0): { style: Animated.WithAnimatedValue<View
         }),
         transform: [
           {
-            scale: progress.interpolate({
-              inputRange: [0, 0.6, 1],
-              outputRange: [0.96, 1.02, 1],
-            }),
-          },
-          {
             translateY: progress.interpolate({
               inputRange: [0, 1],
-              outputRange: [8, 0],
+              outputRange: [6, 0],
             }),
           },
         ],

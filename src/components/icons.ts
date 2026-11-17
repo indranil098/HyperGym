@@ -3,6 +3,7 @@ export { default as DumbbellIcon } from 'lucide-react-native/icons/dumbbell';
 export { default as ChartIcon } from 'lucide-react-native/icons/chart-line';
 export { default as ListIcon } from 'lucide-react-native/icons/list-checks';
 export { default as SettingsIcon } from 'lucide-react-native/icons/settings';
+export { default as StopwatchIcon } from 'lucide-react-native/icons/timer';
 export { default as CameraIcon } from 'lucide-react-native/icons/camera';
 export { default as PhotoIcon } from 'lucide-react-native/icons/image';
 export { default as PlusIcon } from 'lucide-react-native/icons/plus';

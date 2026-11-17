@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { Alert, Animated, Dimensions, Easing, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Animated, Dimensions, Pressable, ScrollView, Text, View } from 'react-native';
 import { color, radius, space, surface, type } from '../theme';
 import { dayLabel, clockLabel } from '../lib/date';
+import { duration as motionDuration, curve, useReduceMotion } from '../lib/motion';
 import { tap } from '../lib/feedback';
 import type { Thread } from '../types';
 import { Icon } from './Icon';
@@ -72,15 +73,16 @@ export function ChatSidebar({
   onDelete,
 }: Props) {
   const anim = useRef(new Animated.Value(0)).current;
+  const reduce = useReduceMotion();
 
   useEffect(() => {
     Animated.timing(anim, {
       toValue: visible ? 1 : 0,
-      duration: 280,
-      easing: visible ? Easing.out(Easing.exp) : Easing.in(Easing.quad),
+      duration: reduce ? motionDuration.instant : 280,
+      easing: visible ? curve.enter : curve.exit,
       useNativeDriver: true,
     }).start();
-  }, [visible, anim]);
+  }, [visible, anim, reduce]);
 
   const confirmDelete = (thread: Thread) => {
     Alert.alert('Delete this chat?', thread.title, [
@@ -178,8 +180,6 @@ export function ChatSidebar({
                       borderRadius: radius.row,
                       marginBottom: space.xxs,
                       backgroundColor: active ? color.ink2 : 'transparent',
-                      borderWidth: 1,
-                      borderColor: active ? color.line : 'transparent',
                       overflow: 'hidden',
                     }}
                   >

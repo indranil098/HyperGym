@@ -5,6 +5,9 @@ export const KEYS = {
   chat: 'hg.chat.v1',
   threads: 'hg.threads.v1',
   activeThread: 'hg.activeThread.v1',
+  session: 'hg.session.v1',
+  rest: 'hg.rest.v1',
+  stopwatch: 'hg.stopwatch.v1',
   routines: 'hg.routines.v1',
   settings: 'hg.settings.v1',
 } as const;
@@ -47,8 +50,15 @@ export function createSaver(key: string, wait = 400): (value: unknown) => void {
 
 export async function clearAll(): Promise<void> {
   await Promise.all(
-    [KEYS.days, KEYS.chat, KEYS.threads, KEYS.activeThread, KEYS.routines].map(key =>
-      AsyncStorage.removeItem(key),
-    ),
+    [
+      KEYS.days,
+      KEYS.chat,
+      KEYS.threads,
+      KEYS.activeThread,
+      KEYS.session,
+      KEYS.rest,
+      KEYS.stopwatch,
+      KEYS.routines,
+    ].map(key => AsyncStorage.removeItem(key)),
   );
 }
