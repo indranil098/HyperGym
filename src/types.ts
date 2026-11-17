@@ -180,6 +180,11 @@ export type ThemeSetting = 'dark' | 'green' | 'light';
 
 export type Settings = {
   apiKey: string;
+  /** Extra OpenRouter keys. The pool rotates so one exhausted key never
+   * blocks a request. At most 4 are used. */
+  apiKeys?: string[];
+  /** Round-robin cursor into apiKeys. */
+  keyIndex?: number;
   model: string;
   autoFallback: boolean;
   unit: Unit;

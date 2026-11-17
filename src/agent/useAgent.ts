@@ -12,7 +12,7 @@ import { SYSTEM_PROMPT } from '../ai/prompt';
 import { TOOLS } from '../ai/tools';
 import { streak } from '../lib/insights';
 import { uid } from '../lib/id';
-import { useAppStore } from '../store/useAppStore';
+import { keyPool, useAppStore } from '../store/useAppStore';
 import type { AttachedImage, ChatMessage, Draft, WorkoutDay } from '../types';
 import {
   clarificationFromToolCall,
@@ -239,7 +239,7 @@ export function useAgent(): AgentState {
       }
 
       const settings = useAppStore.getState().settings;
-      if (!settings.apiKey) {
+      if (keyPool(settings).length === 0) {
         setError('Add your OpenRouter key in Settings first.');
         return;
       }
@@ -410,69 +410,99 @@ export function useAgent(): AgentState {
 
     let lastError: unknown = null;
 
-    for (let index = 0; index < chain.length; index += 1) {
-      const model = chain[index];
-      setActiveModel(model);
-      setStatus(
-        index === 0
-          ? `Asking ${modelShort(model)}`
-          : `${modelShort(chain[0])} struggled, trying ${modelShort(model)}`,
-      );
+    // Round-robin across every key on file, then across the model fallback
+    // chain. A key that is out of credits or rejected moves the cursor forward
+    // permanently, so the pool self-heals instead of retrying a dead key.
+    const pool = keyPool(settings);
+    const cursor = settings.keyIndex ?? 0;
+    const startIndex = pool.length > 0 ? cursor % pool.length : 0;
 
-      let lastFlush = 0;
+    for (let keyOffset = 0; keyOffset < pool.length; keyOffset += 1) {
+      const apiKey = pool[(startIndex + keyOffset) % pool.length];
 
-      try {
-        const handle = streamChat({
-          apiKey: settings.apiKey,
-          model,
-          messages: wire,
-          tools: TOOLS,
-          onText: (_delta, full) => {
-            const now = Date.now();
-            if (now - lastFlush < 55) {
-              return;
-            }
-            lastFlush = now;
-            useAppStore.getState().patchMessage(assistantId, message =>
-              message.role === 'assistant' && message.kind === 'text'
-                ? { ...message, text: full }
-                : message,
-            );
-          },
-        });
-        cancelRef.current = handle.cancel;
-        const result = await handle.promise;
-        cancelRef.current = null;
+      for (let index = 0; index < chain.length; index += 1) {
+        const model = chain[index];
+        setActiveModel(model);
+        setStatus(
+          index === 0
+            ? `Asking ${modelShort(model)}`
+            : `${modelShort(chain[0])} struggled, trying ${modelShort(model)}`,
+        );
 
-        if (cancelledRef.current) {
-          useAppStore.getState().removeMessage(assistantId);
-          break;
-        }
+        let lastFlush = 0;
 
-        if (apply(result)) {
-          setStatus('');
-          setBusy(false);
-          if (auraRef.current) {
-            const threadId = useAppStore.getState().activeThreadId;
-            useAppStore.getState().markAuraDone(threadId);
+        try {
+          const handle = streamChat({
+            apiKey,
+            model,
+            messages: wire,
+            tools: TOOLS,
+            onText: (_delta, full) => {
+              const now = Date.now();
+              if (now - lastFlush < 55) {
+                return;
+              }
+              lastFlush = now;
+              useAppStore.getState().patchMessage(assistantId, message =>
+                message.role === 'assistant' && message.kind === 'text'
+                  ? { ...message, text: full }
+                  : message,
+              );
+            },
+          });
+          cancelRef.current = handle.cancel;
+          const result = await handle.promise;
+          cancelRef.current = null;
+
+          if (cancelledRef.current) {
+            useAppStore.getState().removeMessage(assistantId);
+            break;
           }
-          settleAura();
-          return;
-        }
 
-        lastError = new OpenRouterError('Usable reply not found.', 0);
-        continue;
-      } catch (caught) {
-        cancelRef.current = null;
-        if (cancelledRef.current) {
-          useAppStore.getState().removeMessage(assistantId);
+          if (apply(result)) {
+            setStatus('');
+            setBusy(false);
+            // Spread the next request across the pool.
+            if (pool.length > 1) {
+              const next = (startIndex + 1) % pool.length;
+              if (next !== cursor) {
+                useAppStore.getState().updateSettings({ keyIndex: next });
+              }
+            }
+            if (auraRef.current) {
+              const threadId = useAppStore.getState().activeThreadId;
+              useAppStore.getState().markAuraDone(threadId);
+            }
+            settleAura();
+            return;
+          }
+
+          lastError = new OpenRouterError('Usable reply not found.', 0);
+          continue;
+        } catch (caught) {
+          cancelRef.current = null;
+          if (cancelledRef.current) {
+            useAppStore.getState().removeMessage(assistantId);
+            break;
+          }
+          lastError = caught;
+          if (caught instanceof OpenRouterError && caught.retryable) {
+            continue;
+          }
           break;
         }
-        lastError = caught;
-        if (caught instanceof OpenRouterError && caught.retryable) {
-          continue;
-        }
+      }
+
+      if (cancelledRef.current) {
         break;
+      }
+    }
+
+    // A key that ran dry or was rejected is skipped next time.
+    if (pool.length > 1) {
+      const next = (startIndex + 1) % pool.length;
+      if (next !== cursor) {
+        useAppStore.getState().updateSettings({ keyIndex: next });
       }
     }
 

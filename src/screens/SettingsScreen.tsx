@@ -5,7 +5,7 @@ import { color, layout, space, surface, type } from '../theme';
 import { MODELS } from '../ai/models';
 import { checkKey, type KeyCheck } from '../ai/client';
 import { tap } from '../lib/feedback';
-import { useAppStore } from '../store/useAppStore';
+import { keyPool, useAppStore } from '../store/useAppStore';
 import type { MotionSetting, ThemeSetting, Unit } from '../types';
 import { TextButton } from '../components/Button';
 import { Chip } from '../components/Chip';
@@ -29,6 +29,15 @@ function Divider() {
   return <View style={{ height: 1, backgroundColor: color.lineSoft }} />;
 }
 
+/** Up to four keys, one per line. Blank lines and whitespace are dropped. */
+function splitKeys(raw: string): string[] {
+  return raw
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
 export function SettingsScreen() {
   const settings = useAppStore(state => state.settings);
   const updateSettings = useAppStore(state => state.updateSettings);
@@ -41,6 +50,8 @@ export function SettingsScreen() {
   const [checking, setChecking] = useState(false);
   const [check, setCheck] = useState<KeyCheck | null>(null);
 
+  const poolCount = keyPool(settings).length;
+
   useEffect(() => {
     setKeyDraft(settings.apiKey);
   }, [settings.apiKey]);
@@ -49,7 +60,7 @@ export function SettingsScreen() {
     setChecking(true);
     setCheck(null);
     const submitted = keyDraft;
-    const result = await checkKey(submitted);
+    const result = await checkKey(splitKeys(submitted)[0] ?? '');
     // A second check may have started while this one was in flight; only the
     // newest result may update the field or persist a key.
     if (submitted !== keyDraft) {
@@ -58,7 +69,7 @@ export function SettingsScreen() {
     setCheck(result);
     setChecking(false);
     if (result.ok) {
-      updateSettings({ apiKey: submitted.trim() });
+      updateSettings({ apiKeys: splitKeys(submitted) });
     }
   };
 
@@ -97,21 +108,22 @@ export function SettingsScreen() {
         }}
         keyboardShouldPersistTaps="handled"
       >
-        <Section title="OpenRouter key">
+        <Section title="OpenRouter keys">
           <TextInput
             value={keyDraft}
             onChangeText={value => {
               setKeyDraft(value);
               setCheck(null);
             }}
-            onBlur={() => updateSettings({ apiKey: keyDraft.trim() })}
-            onSubmitEditing={() => updateSettings({ apiKey: keyDraft.trim() })}
-            placeholder="sk-or-v1-..."
+            onBlur={() => updateSettings({ apiKeys: splitKeys(keyDraft) })}
+            onSubmitEditing={() => updateSettings({ apiKeys: splitKeys(keyDraft) })}
+            placeholder={'sk-or-v1-...\nsk-or-v1-...'}
             placeholderTextColor={color.paperFaint}
             autoCapitalize="none"
             autoCorrect={false}
+            multiline
             secureTextEntry={!reveal}
-            accessibilityLabel="OpenRouter API key"
+            accessibilityLabel="OpenRouter API keys, one per line"
             style={[type.body, { paddingVertical: space.sm, color: color.paper }]}
           />
           <Divider />
@@ -130,7 +142,9 @@ export function SettingsScreen() {
                 ? 'Checking the key'
                 : check
                   ? check.message
-                  : 'Create one at openrouter.ai/keys'}
+                  : poolCount > 1
+                    ? `${poolCount} keys rotating. Create more at openrouter.ai/keys`
+                    : 'Create one at openrouter.ai/keys'}
             </Text>
             <TextButton
               label={checking ? 'Checking' : 'Check'}

@@ -21,6 +21,9 @@ export type Palette = {
   voltInk: string;
   scrim: string;
   glass: string;
+  /** Glow colour for the chat aura. Must contrast with the background, which
+   * volt does not on the lime and white themes. */
+  aura: string;
 };
 
 const PALETTES: Record<ThemeName, Palette> = {
@@ -38,6 +41,7 @@ const PALETTES: Record<ThemeName, Palette> = {
     voltInk: '#0A0A0B',
     scrim: 'rgba(0,0,0,0.72)',
     glass: '#0A0A0B',
+    aura: '#C9FA4B',
   },
   green: {
     ink: '#C9FA4B',
@@ -53,6 +57,7 @@ const PALETTES: Record<ThemeName, Palette> = {
     voltInk: '#C9FA4B',
     scrim: 'rgba(10,20,0,0.55)',
     glass: '#BEEE42',
+    aura: '#FFFFFF',
   },
   light: {
     ink: '#FFFFFF',
@@ -68,6 +73,7 @@ const PALETTES: Record<ThemeName, Palette> = {
     voltInk: '#FFFFFF',
     scrim: 'rgba(0,0,0,0.45)',
     glass: '#F6F6F7',
+    aura: '#C9FA4B',
   },
 };
 

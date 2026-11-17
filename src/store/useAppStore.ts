@@ -25,12 +25,28 @@ import { applyTheme } from '../theme';
 
 export const DEFAULT_SETTINGS: Settings = {
   apiKey: '',
+  apiKeys: [],
+  keyIndex: 0,
   model: DEFAULT_MODEL,
   autoFallback: true,
   unit: 'kg',
   motion: 'system',
   theme: 'dark',
 };
+
+/** Every OpenRouter key on file, primary first, capped at 4. */
+export function keyPool(settings: Settings): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const key of [settings.apiKey, ...(settings.apiKeys ?? [])]) {
+    const trimmed = key.trim();
+    if (trimmed && !seen.has(trimmed) && out.length < 4) {
+      seen.add(trimmed);
+      out.push(trimmed);
+    }
+  }
+  return out;
+}
 
 const CHAT_LIMIT = 200;
 const THREAD_LIMIT = 60;
@@ -178,6 +194,11 @@ export const useAppStore = create<State & Actions>()((set, get) => {
       if (!MODELS.some(model => model.id === merged.model)) {
         merged.model = DEFAULT_MODEL;
       }
+      // Single-key installs predate the pool; fold the primary in so rotation
+      // has something to work with.
+      if ((merged.apiKeys ?? []).length === 0 && merged.apiKey.trim()) {
+        merged.apiKeys = [merged.apiKey.trim()];
+      }
       applyTheme(merged.theme);
 
       const threads =
@@ -213,6 +234,10 @@ export const useAppStore = create<State & Actions>()((set, get) => {
         applyTheme(patch.theme);
       }
       const settings = { ...get().settings, ...patch };
+      // The pool is the source of truth for what gets sent; keep the primary
+      // key in sync so older code paths and the Settings field stay coherent.
+      const pool = keyPool(settings);
+      settings.apiKey = pool[0] ?? '';
       set({ settings });
       saveSettings(settings);
     },

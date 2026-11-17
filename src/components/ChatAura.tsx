@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 import Svg, { Defs, LinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
+import { color } from '../theme';
 import { useReduceMotion } from '../lib/motion';
 import type { AuraPhase } from '../agent/useAgent';
 
@@ -21,9 +22,14 @@ type Bloom = {
 };
 
 /**
- * The intro aura. Three soft lime blooms behind the chat that change character
- * with the request lifecycle, then sink away and unmount once the reply lands.
- * Only ever present for a chat's opening exchange.
+ * The intro aura. Three soft blooms behind the chat that change character with
+ * the request lifecycle, then sink away and unmount once the reply lands. Only
+ * ever present for a chat's opening exchange.
+ *
+ * The bloom takes the theme's accent, so it is lime on the black theme and a
+ * dark wash on the lime and white themes where lime would disappear. The veil
+ * uses the theme background rather than hardcoded black, which previously
+ * painted a dark smear across the white and lime pages.
  *
  * Blur is approximated with radial-gradient falloff rather than a filter:
  * React Native has no backdrop blur without a native dependency, and a wide
@@ -141,10 +147,10 @@ export function ChatAura({ phase }: Props) {
           <Svg width={bloom.size} height={bloom.size}>
             <Defs>
               <RadialGradient id={`aura-${index}`} cx="0.5" cy="0.5" r="0.5">
-                <Stop offset="0" stopColor="#C9FA4B" stopOpacity={0.9} />
-                <Stop offset="0.45" stopColor="#C9FA4B" stopOpacity={0.28} />
-                <Stop offset="0.78" stopColor="#C9FA4B" stopOpacity={0.07} />
-                <Stop offset="1" stopColor="#C9FA4B" stopOpacity={0} />
+                <Stop offset="0" stopColor={color.aura} stopOpacity={0.9} />
+                <Stop offset="0.45" stopColor={color.aura} stopOpacity={0.28} />
+                <Stop offset="0.78" stopColor={color.aura} stopOpacity={0.07} />
+                <Stop offset="1" stopColor={color.aura} stopOpacity={0} />
               </RadialGradient>
             </Defs>
             <Rect x={0} y={0} width={bloom.size} height={bloom.size} fill={`url(#aura-${index})`} />
@@ -156,10 +162,10 @@ export function ChatAura({ phase }: Props) {
       <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
         <Defs>
           <LinearGradient id="aura-veil" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#000000" stopOpacity={1} />
-            <Stop offset="0.42" stopColor="#000000" stopOpacity={0.82} />
-            <Stop offset="0.72" stopColor="#000000" stopOpacity={0.3} />
-            <Stop offset="1" stopColor="#000000" stopOpacity={0} />
+            <Stop offset="0" stopColor={color.ink} stopOpacity={1} />
+            <Stop offset="0.42" stopColor={color.ink} stopOpacity={0.82} />
+            <Stop offset="0.72" stopColor={color.ink} stopOpacity={0.3} />
+            <Stop offset="1" stopColor={color.ink} stopOpacity={0} />
           </LinearGradient>
         </Defs>
         <Rect x={0} y={0} width="100%" height="100%" fill="url(#aura-veil)" />
