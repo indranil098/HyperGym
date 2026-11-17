@@ -1,5 +1,6 @@
 import { memo } from 'react';
-import { Animated, Image, Text, View } from 'react-native';
+import { Image, Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { color, radius, space, type } from '../theme';
 import { useEntrance } from '../lib/motion';
 import type { ChatMessage, Unit } from '../types';

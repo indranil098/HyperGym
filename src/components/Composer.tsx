@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import {
   Image,
-  Modal,
-  Pressable,
   Text,
   TextInput,
   View,
@@ -15,6 +13,8 @@ import type { AttachedImage } from '../types';
 import { Icon } from './Icon';
 import { CameraIcon, CloseIcon, PhotoIcon, ArrowUpIcon } from './icons';
 import { Tap } from './Tap';
+import { Glass } from './Glass';
+import { BottomSheet } from './BottomSheet';
 
 type Props = {
   onSend: (text: string, images: AttachedImage[]) => void;
@@ -131,13 +131,14 @@ export function Composer({ onSend, busy, onStop, status }: Props) {
         <Text style={[type.micro, { paddingBottom: space.xxs }]}>{status}</Text>
       ) : null}
 
-      <View
+      <Glass
+        preset="compactControl"
+        radius={radius.pill}
+        interactive
         style={{
           flexDirection: 'row',
           alignItems: 'flex-end',
           gap: space.xxs,
-          backgroundColor: color.ink1,
-          borderRadius: radius.pill,
           paddingHorizontal: space.xs,
           paddingVertical: space.xxs,
         }}
@@ -192,61 +193,40 @@ export function Composer({ onSend, busy, onStop, status }: Props) {
             <Icon icon={ArrowUpIcon} size={26} tone={canSend ? 'ink' : 'faint'} />
           )}
         </Tap>
-      </View>
+      </Glass>
 
-      <Modal
-        visible={sheetOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSheetOpen(false)}
-      >
-        <Pressable style={{ flex: 1, backgroundColor: color.scrim }} onPress={() => setSheetOpen(false)}>
-          <View
-            style={{
-              marginTop: 'auto',
-              backgroundColor: color.ink1,
-              borderTopLeftRadius: radius.card,
-              borderTopRightRadius: radius.card,
-              borderTopWidth: 1,
-              borderColor: color.line,
-              padding: layout.cardPad,
-              paddingBottom: space.xl,
-              gap: space.xxs,
-            }}
-          >
-            <Text style={[type.label, { marginBottom: space.xs }]}>Add a photo</Text>
+      <BottomSheet visible={sheetOpen} onClose={() => setSheetOpen(false)}>
+        <Text style={[type.label, { marginBottom: space.xs }]}>Add a photo</Text>
 
-            <Tap
-              onPress={() => void pick('camera')}
-              accessibilityLabel="Take a photo"
-              style={{ height: 64, flexDirection: 'row', justifyContent: 'flex-start', gap: space.md }}
-            >
-              <Icon icon={CameraIcon} size={28} tone="volt" />
-              <Text style={type.body}>Take a photo</Text>
-            </Tap>
+        <Tap
+          onPress={() => void pick('camera')}
+          accessibilityLabel="Take a photo"
+          style={{ height: 64, flexDirection: 'row', justifyContent: 'flex-start', gap: space.md }}
+        >
+          <Icon icon={CameraIcon} size={28} tone="volt" />
+          <Text style={type.body}>Take a photo</Text>
+        </Tap>
 
-            <Tap
-              onPress={() => void pick('library')}
-              accessibilityLabel="Choose from gallery"
-              style={{ height: 64, flexDirection: 'row', justifyContent: 'flex-start', gap: space.md }}
-            >
-              <Icon icon={PhotoIcon} size={28} tone="volt" />
-              <Text style={type.body}>Choose from gallery</Text>
-            </Tap>
+        <Tap
+          onPress={() => void pick('library')}
+          accessibilityLabel="Choose from gallery"
+          style={{ height: 64, flexDirection: 'row', justifyContent: 'flex-start', gap: space.md }}
+        >
+          <Icon icon={PhotoIcon} size={28} tone="volt" />
+          <Text style={type.body}>Choose from gallery</Text>
+        </Tap>
 
-            <Tap
-              onPress={() => {
-                warn();
-                setSheetOpen(false);
-              }}
-              accessibilityLabel="Cancel"
-              style={{ height: 56 }}
-            >
-              <Text style={type.bodyStrong}>Cancel</Text>
-            </Tap>
-          </View>
-        </Pressable>
-      </Modal>
+        <Tap
+          onPress={() => {
+            warn();
+            setSheetOpen(false);
+          }}
+          accessibilityLabel="Cancel"
+          style={{ height: 56 }}
+        >
+          <Text style={type.bodyStrong}>Cancel</Text>
+        </Tap>
+      </BottomSheet>
     </View>
   );
 }

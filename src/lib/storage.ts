@@ -10,6 +10,7 @@ export const KEYS = {
   stopwatch: 'hg.stopwatch.v1',
   routines: 'hg.routines.v1',
   settings: 'hg.settings.v1',
+  update: 'hg.update.v1',
 } as const;
 
 export async function loadJSON<T>(key: string, fallback: T): Promise<T> {

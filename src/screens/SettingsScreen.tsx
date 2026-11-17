@@ -6,6 +6,7 @@ import { MODELS } from '../ai/models';
 import { checkKey, type KeyCheck } from '../ai/client';
 import { tap } from '../lib/feedback';
 import { keyPool, useAppStore } from '../store/useAppStore';
+import { APP_NAME, APP_VERSION } from '../releaseInfo';
 import type { MotionSetting, ThemeSetting, Unit } from '../types';
 import { TextButton } from '../components/Button';
 import { Chip } from '../components/Chip';
@@ -45,6 +46,11 @@ export function SettingsScreen() {
   const routines = useAppStore(state => state.routines);
   const clearChat = useAppStore(state => state.clearChat);
   const wipe = useAppStore(state => state.wipe);
+  const update = useAppStore(state => state.update);
+  const checkForUpdates = useAppStore(state => state.checkForUpdates);
+  const setUpdateSheet = useAppStore(state => state.setUpdateSheet);
+  const updateStatus = update.status;
+  const updateError = update.error;
   const [reveal, setReveal] = useState(false);
   const [keyDraft, setKeyDraft] = useState(settings.apiKey);
   const [checking, setChecking] = useState(false);
@@ -303,9 +309,59 @@ export function SettingsScreen() {
           </Tap>
         </Section>
 
+        <Section title="Updates">
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: space.sm,
+              minHeight: 60,
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={type.body}>{`v${APP_VERSION}`}</Text>
+              <Text style={type.micro}>
+                {updateStatus === 'checking'
+                  ? 'Checking GitHub releases'
+                  : updateStatus === 'error'
+                    ? updateError ?? 'Could not reach GitHub releases.'
+                    : update.available
+                      ? `${update.available.tag} is ready to install`
+                      : 'You are on the latest release'}
+              </Text>
+            </View>
+            <TextButton
+              label={updateStatus === 'checking' ? 'Checking' : 'Check now'}
+              tone="volt"
+              disabled={updateStatus === 'checking'}
+              onPress={() => {
+                tap();
+                void checkForUpdates();
+              }}
+            />
+          </View>
+          {update.available ? (
+            <>
+              <Divider />
+              <Tap
+                minSize={0}
+                onPress={() => {
+                  tap();
+                  setUpdateSheet(true);
+                }}
+                accessibilityLabel={`View ${update.available.tag} details`}
+                style={{ minHeight: 60, justifyContent: 'center' }}
+              >
+                <Text style={type.body}>View {update.available.tag} details</Text>
+                <Text style={type.micro}>Release notes and the APK download</Text>
+              </Tap>
+            </>
+          ) : null}
+        </Section>
+
         <Text style={[type.micro, { paddingBottom: space.lg }]}>
-          HyperGym 1.0. Your key goes to OpenRouter and nowhere else. Photos are sent to the model you
-          picked, never stored on a server.
+          {APP_NAME} {`v${APP_VERSION}`}. Your key goes to OpenRouter and nowhere else. Photos are
+          sent to the model you picked, never stored on a server.
         </Text>
       </ScrollView>
     </SafeAreaView>

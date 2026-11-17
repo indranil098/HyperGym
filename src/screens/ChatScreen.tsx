@@ -156,7 +156,7 @@ export function ChatScreen() {
         {chat.length === 0 ? (
           <View style={{ flex: 1, justifyContent: 'flex-end', paddingBottom: space.xl }}>
             <Text style={[type.title, { fontSize: 30, lineHeight: 36 }]}>
-              What did you train?
+              What did you train today?
             </Text>
             <Text style={[type.compact, { marginTop: space.xs }]}>
               Say it, or send a photo.

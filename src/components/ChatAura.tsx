@@ -1,8 +1,16 @@
-import { useEffect, useMemo } from 'react';
-import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { useEffect } from 'react';
+import { StyleSheet, View } from 'react-native';
 import Svg, { Defs, LinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
+import Animated, {
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import { color } from '../theme';
-import { useReduceMotion } from '../lib/motion';
+import { curve, duration as motionDuration, useReduceMotion } from '../lib/motion';
 import type { AuraPhase } from '../agent/useAgent';
 
 type Props = {
@@ -31,9 +39,10 @@ type Bloom = {
  * uses the theme background rather than hardcoded black, which previously
  * painted a dark smear across the white and lime pages.
  *
+ * Every bloom runs its own shared values on the UI thread — the phase system
+ * only ever assigns new animations, so no JS timer keeps the drift alive.
  * Blur is approximated with radial-gradient falloff rather than a filter:
- * React Native has no backdrop blur without a native dependency, and a wide
- * transparent-to-transparent stop ramp reads as a bloom rather than a circle.
+ * a wide transparent-to-transparent stop ramp reads as a bloom, not a circle.
  */
 const BLOOMS: Bloom[] = [
   { size: 560, x: 0.2, y: 0.9, alpha: 0.62, drift: 46, period: 9000 },
@@ -52,76 +61,97 @@ const PROFILE: Record<Exclude<AuraPhase, 'off'>, { intensity: number; speed: num
   settling: { intensity: 0, speed: 1, rise: 260 },
 } as const;
 
-export function ChatAura({ phase }: Props) {
-  const reduce = useReduceMotion();
-  // Hooks must run on every render; the phase may flip to 'off' at any point,
-  // so profile falls back rather than early-returning before them.
+function BloomView({ bloom, phase, reduce }: { bloom: Bloom; phase: AuraPhase; reduce: boolean }) {
   const profile = phase === 'off' ? PROFILE.idle : PROFILE[phase];
-
-  const drivers = useMemo(
-    () => BLOOMS.map(() => ({ opacity: new Animated.Value(0), y: new Animated.Value(0) })),
-    [],
-  );
+  const opacity = useSharedValue(0);
+  const y = useSharedValue(0);
 
   useEffect(() => {
     if (phase === 'off') {
       return;
     }
+    const settling = phase === 'settling';
 
-    const animations: Animated.CompositeAnimation[] = [];
+    if (reduce) {
+      opacity.value = profile.intensity * bloom.alpha;
+      y.value = profile.rise;
+      return;
+    }
 
-    BLOOMS.forEach((bloom, index) => {
-      const { opacity, y } = drivers[index];
-
-      if (reduce) {
-        opacity.setValue(profile.intensity * bloom.alpha);
-        y.setValue(profile.rise);
-        return;
-      }
-
-      animations.push(
-        Animated.timing(opacity, {
-          toValue: profile.intensity * bloom.alpha,
-          duration: phase === 'settling' ? 1600 : 900,
-          easing: phase === 'settling' ? Easing.out(Easing.quad) : Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      );
-      animations.push(
-        Animated.timing(y, {
-          toValue: profile.rise,
-          duration: phase === 'settling' ? 1700 : 1100,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      );
-
-      if (phase !== 'settling') {
-        // Continuous drift, phase-scaled so "thinking" visibly hurries.
-        animations.push(
-          Animated.loop(
-            Animated.sequence([
-              Animated.timing(y, {
-                toValue: profile.rise - bloom.drift * profile.speed,
-                duration: (bloom.period / profile.speed) * 0.5,
-                easing: Easing.inOut(Easing.sin),
-                useNativeDriver: true,
-              }),
-              Animated.timing(y, {
-                toValue: profile.rise + bloom.drift * profile.speed,
-                duration: (bloom.period / profile.speed) * 0.5,
-                easing: Easing.inOut(Easing.sin),
-                useNativeDriver: true,
-              }),
-            ]),
-          ),
-        );
-      }
+    opacity.value = withTiming(profile.intensity * bloom.alpha, {
+      duration: settling ? motionDuration.settle : motionDuration.ambient,
+      easing: settling ? curve.glide : curve.soft,
     });
 
-    animations.forEach(animation => animation.start());
-    return () => animations.forEach(animation => animation.stop());
-  }, [phase, profile, reduce, drivers]);
+    if (settling) {
+      y.value = withTiming(profile.rise, {
+        duration: motionDuration.settle + 100,
+        easing: curve.glide,
+      });
+      return () => {
+        cancelAnimation(opacity);
+        cancelAnimation(y);
+      };
+    }
+
+    // Rise into position, then hand off to an endless palindrome drift,
+    // phase-scaled so "thinking" visibly hurries.
+    const leg = (bloom.period / profile.speed) * 0.5;
+    const driftTop = profile.rise - bloom.drift * profile.speed;
+    const driftBottom = profile.rise + bloom.drift * profile.speed;
+    y.value = withSequence(
+      withTiming(profile.rise, { duration: motionDuration.rise, easing: curve.glide }),
+      withRepeat(
+        withSequence(
+          withTiming(driftTop, { duration: leg, easing: curve.sway }),
+          withTiming(driftBottom, { duration: leg, easing: curve.sway }),
+        ),
+        -1,
+      ),
+    );
+    return () => {
+      cancelAnimation(opacity);
+      cancelAnimation(y);
+    };
+  }, [phase, profile, reduce, bloom, opacity, y]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateY: y.value }],
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        {
+          position: 'absolute',
+          left: `${bloom.x * 100}%` as `${number}%`,
+          top: `${bloom.y * 100}%` as `${number}%`,
+          marginLeft: -bloom.size / 2,
+          marginTop: -bloom.size / 2,
+          width: bloom.size,
+          height: bloom.size,
+        },
+        style,
+      ]}
+    >
+      <Svg width={bloom.size} height={bloom.size}>
+        <Defs>
+          <RadialGradient id={`aura-${bloom.size}`} cx="0.5" cy="0.5" r="0.5">
+            <Stop offset="0" stopColor={color.aura} stopOpacity={0.9} />
+            <Stop offset="0.45" stopColor={color.aura} stopOpacity={0.28} />
+            <Stop offset="0.78" stopColor={color.aura} stopOpacity={0.07} />
+            <Stop offset="1" stopColor={color.aura} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Rect x={0} y={0} width={bloom.size} height={bloom.size} fill={`url(#aura-${bloom.size})`} />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+export function ChatAura({ phase }: Props) {
+  const reduce = useReduceMotion();
 
   if (phase === 'off') {
     return null;
@@ -129,33 +159,8 @@ export function ChatAura({ phase }: Props) {
 
   return (
     <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '52%' }}>
-      {BLOOMS.map((bloom, index) => (
-        <Animated.View
-          key={index}
-          style={{
-            position: 'absolute',
-            left: `${bloom.x * 100}%` as `${number}%`,
-            top: `${bloom.y * 100}%` as `${number}%`,
-            marginLeft: -bloom.size / 2,
-            marginTop: -bloom.size / 2,
-            width: bloom.size,
-            height: bloom.size,
-            opacity: drivers[index].opacity,
-            transform: [{ translateY: drivers[index].y }],
-          }}
-        >
-          <Svg width={bloom.size} height={bloom.size}>
-            <Defs>
-              <RadialGradient id={`aura-${index}`} cx="0.5" cy="0.5" r="0.5">
-                <Stop offset="0" stopColor={color.aura} stopOpacity={0.9} />
-                <Stop offset="0.45" stopColor={color.aura} stopOpacity={0.28} />
-                <Stop offset="0.78" stopColor={color.aura} stopOpacity={0.07} />
-                <Stop offset="1" stopColor={color.aura} stopOpacity={0} />
-              </RadialGradient>
-            </Defs>
-            <Rect x={0} y={0} width={bloom.size} height={bloom.size} fill={`url(#aura-${index})`} />
-          </Svg>
-        </Animated.View>
+      {BLOOMS.map(bloom => (
+        <BloomView key={bloom.size} bloom={bloom} phase={phase} reduce={reduce} />
       ))}
       {/* Melt the blooms into black toward the top so the aura reads as light
           rising from the composer rather than shapes floating mid-screen. */}

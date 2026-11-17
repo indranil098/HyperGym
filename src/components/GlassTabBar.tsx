@@ -1,13 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Keyboard, Pressable, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Text, View } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import { color, layout, radius, space, type } from '../theme';
 import { tap } from '../lib/feedback';
-import { useReduceMotion } from '../lib/motion';
+import { spring, useReduceMotion } from '../lib/motion';
+import { useKeyboardInset } from '../lib/keyboard';
 import { useAppStore } from '../store/useAppStore';
 import { Glass } from './Glass';
 import { RestTimer } from './RestTimer';
 import { Icon } from './Icon';
+import { Tap } from './Tap';
 import { ChatIcon, DumbbellIcon, ListIcon, SettingsIcon, StopwatchIcon } from './icons';
 
 const GLYPHS = {
@@ -37,7 +44,7 @@ const LENS_INSET = 5;
  */
 export function GlassTabBar({ state, navigation, insets }: BottomTabBarProps) {
   const reduce = useReduceMotion();
-  const slide = useRef(new Animated.Value(state.index)).current;
+  const slide = useSharedValue(state.index);
   const [track, setTrack] = useState(0);
   const count = state.routes.length;
   const cell = count > 0 ? track / count : 0;
@@ -45,7 +52,7 @@ export function GlassTabBar({ state, navigation, insets }: BottomTabBarProps) {
   const sessionRunning = useAppStore(state => Boolean(state.session));
   const setActiveTab = useAppStore(state => state.setActiveTab);
   const focusedName = state.routes[state.index]?.name;
-  const [keyboard, setKeyboard] = useState(0);
+  const keyboardInset = useKeyboardInset();
 
   useEffect(() => {
     if (focusedName) {
@@ -54,28 +61,18 @@ export function GlassTabBar({ state, navigation, insets }: BottomTabBarProps) {
   }, [focusedName, setActiveTab]);
 
   useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', event => setKeyboard(event.endCoordinates.height));
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboard(0));
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
-
-  useEffect(() => {
     if (reduce) {
-      slide.setValue(state.index);
+      slide.value = state.index;
       return;
     }
     // Spring rather than timing: the slight overshoot is what makes the lens
     // read as liquid instead of a rectangle sliding on rails.
-    Animated.spring(slide, {
-      toValue: state.index,
-      friction: 8,
-      tension: 70,
-      useNativeDriver: true,
-    }).start();
+    slide.value = withSpring(state.index, spring.lens);
   }, [state.index, slide, reduce]);
+
+  const lensStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: slide.value * cell }],
+  }));
 
   return (
     <View
@@ -94,12 +91,12 @@ export function GlassTabBar({ state, navigation, insets }: BottomTabBarProps) {
       {/* Rest countdown rides above the pill on every tab but Train, where the
           full ring is already on screen. Lives here because this component is
           the one place with navigation context. */}
-      {focusedName !== 'Train' && keyboard <= 0 ? (
+      {focusedName !== 'Train' && keyboardInset <= 0 ? (
         <RestTimer variant="compact" onOpen={() => navigation.navigate('Train')} />
       ) : null}
       <Glass
+        preset="floatingTabBar"
         radius={BAR_HEIGHT / 2}
-        intensity="high"
         style={{
           height: BAR_HEIGHT,
           shadowColor: '#000',
@@ -116,24 +113,19 @@ export function GlassTabBar({ state, navigation, insets }: BottomTabBarProps) {
           {lensWidth > 0 ? (
             <Animated.View
               pointerEvents="none"
-              style={{
-                position: 'absolute',
-                top: LENS_INSET,
-                bottom: LENS_INSET,
-                left: LENS_INSET,
-                width: lensWidth,
-                borderRadius: radius.pill,
-                backgroundColor: color.paper,
-                opacity: 0.1,
-                transform: [
-                  {
-                    translateX: slide.interpolate({
-                      inputRange: [0, Math.max(1, count - 1)],
-                      outputRange: [0, cell * Math.max(1, count - 1)],
-                    }),
-                  },
-                ],
-              }}
+              style={[
+                {
+                  position: 'absolute',
+                  top: LENS_INSET,
+                  bottom: LENS_INSET,
+                  left: LENS_INSET,
+                  width: lensWidth,
+                  borderRadius: radius.pill,
+                  backgroundColor: color.paper,
+                  opacity: 0.1,
+                },
+                lensStyle,
+              ]}
             />
           ) : null}
 
@@ -159,13 +151,14 @@ export function GlassTabBar({ state, navigation, insets }: BottomTabBarProps) {
             };
 
             return (
-              <Pressable
+              <Tap
                 key={route.key}
-                onPress={onPress}
-                onLongPress={onLongPress}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: focused }}
                 accessibilityLabel={label}
+                onPress={onPress}
+                onLongPress={onLongPress}
+                minSize={0}
                 style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3 }}
               >
                 <View>
@@ -203,7 +196,7 @@ export function GlassTabBar({ state, navigation, insets }: BottomTabBarProps) {
                 >
                   {label}
                 </Text>
-              </Pressable>
+              </Tap>
             );
           })}
         </View>

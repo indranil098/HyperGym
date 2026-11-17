@@ -1,8 +1,17 @@
-import { useEffect, useRef } from 'react';
-import { Alert, Animated, Dimensions, Pressable, ScrollView, Text, View } from 'react-native';
+import { useEffect } from 'react';
+import { Alert, Dimensions, Pressable, ScrollView, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { color, radius, space, surface, type } from '../theme';
 import { dayLabel, clockLabel } from '../lib/date';
-import { duration as motionDuration, curve, useReduceMotion } from '../lib/motion';
+import { curve, duration as motionDuration, spring, useReduceMotion } from '../lib/motion';
 import { tap } from '../lib/feedback';
 import type { Thread } from '../types';
 import { Icon } from './Icon';
@@ -72,17 +81,54 @@ export function ChatSidebar({
   onNew,
   onDelete,
 }: Props) {
-  const anim = useRef(new Animated.Value(0)).current;
   const reduce = useReduceMotion();
+  // 0 = off screen, 1 = open. The drag writes it directly so the panel and
+  // the scrim track the finger instead of waiting for release. `grabbed`
+  // holds the progress at gesture start so translation (cumulative) never
+  // compounds on itself.
+  const progress = useSharedValue(0);
+  const grabbed = useSharedValue(0);
 
   useEffect(() => {
-    Animated.timing(anim, {
-      toValue: visible ? 1 : 0,
-      duration: reduce ? motionDuration.instant : 280,
-      easing: visible ? curve.enter : curve.exit,
-      useNativeDriver: true,
-    }).start();
-  }, [visible, anim, reduce]);
+    if (reduce) {
+      progress.value = visible ? 1 : 0;
+      return;
+    }
+    progress.value = visible
+      ? withTiming(1, { duration: motionDuration.base, easing: curve.enter })
+      : withTiming(0, { duration: motionDuration.exit, easing: curve.exit });
+  }, [visible, reduce, progress]);
+
+  const close = () => onClose();
+
+  const pan = Gesture.Pan()
+    .activeOffsetX(12)
+    .failOffsetY([-14, 14])
+    .onStart(() => {
+      grabbed.value = progress.value;
+    })
+    .onUpdate(event => {
+      progress.value = Math.min(1, Math.max(0, grabbed.value + event.translationX / WIDTH));
+    })
+    .onEnd(event => {
+      const dismiss = event.velocityX > 400 || progress.value < 0.55;
+      if (dismiss) {
+        runOnJS(close)();
+        progress.value = reduce
+          ? 0
+          : withTiming(0, { duration: motionDuration.exit, easing: curve.exit });
+        return;
+      }
+      progress.value = reduce ? 1 : withSpring(1, spring.lens);
+    });
+
+  const scrim = useAnimatedStyle(() => ({
+    opacity: progress.value,
+  }));
+
+  const panel = useAnimatedStyle(() => ({
+    transform: [{ translateX: interpolate(progress.value, [0, 1], [WIDTH, 0]) }],
+  }));
 
   const confirmDelete = (thread: Thread) => {
     Alert.alert('Delete this chat?', thread.title, [
@@ -102,33 +148,30 @@ export function ChatSidebar({
       pointerEvents={visible ? 'auto' : 'none'}
       style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
     >
-      <Animated.View style={{ flex: 1, opacity: anim }}>
+      <Animated.View style={[{ flex: 1 }, scrim]}>
         <Pressable style={{ flex: 1, backgroundColor: color.scrim }} onPress={onClose} />
       </Animated.View>
 
-      <Animated.View
-        style={[
-          surface.glass,
-          {
-            position: 'absolute',
-            top: 0,
-            bottom: 0,
-            right: 0,
-            width: WIDTH,
-            borderTopLeftRadius: radius.card,
-            borderBottomLeftRadius: radius.card,
-            borderTopRightRadius: 0,
-            borderBottomRightRadius: 0,
-            paddingHorizontal: space.md,
-            paddingTop: space.xl,
-            transform: [
-              {
-                translateX: anim.interpolate({ inputRange: [0, 1], outputRange: [WIDTH, 0] }),
-              },
-            ],
-          },
-        ]}
-      >
+      <GestureDetector gesture={pan}>
+        <Animated.View
+          style={[
+            surface.glass,
+            panel,
+            {
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              right: 0,
+              width: WIDTH,
+              borderTopLeftRadius: radius.card,
+              borderBottomLeftRadius: radius.card,
+              borderTopRightRadius: 0,
+              borderBottomRightRadius: 0,
+              paddingHorizontal: space.md,
+              paddingTop: space.xl,
+            },
+          ]}
+        >
             <View
               style={{
                 flexDirection: 'row',
@@ -231,7 +274,8 @@ export function ChatSidebar({
             <Text style={[type.micro, { paddingBottom: space.sm }]}>
               {threads.length} {threads.length === 1 ? 'chat' : 'chats'} kept on this phone.
             </Text>
-      </Animated.View>
+        </Animated.View>
+      </GestureDetector>
     </View>
   );
 }

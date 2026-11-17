@@ -4,6 +4,7 @@ import { DarkTheme, NavigationContainer, type Theme } from '@react-navigation/na
 import { createBottomTabNavigator, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { color, type } from './src/theme';
 import { dayLabel } from './src/lib/date';
 import { useAppStore } from './src/store/useAppStore';
@@ -17,6 +18,7 @@ import { ExerciseScreen } from './src/screens/ExerciseScreen';
 import { RoutinesScreen } from './src/screens/RoutinesScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { GlassTabBar } from './src/components/GlassTabBar';
+import { UpdateSheet } from './src/components/UpdateSheet';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 const LogStack = createNativeStackNavigator<LogStackParamList>();
@@ -89,11 +91,19 @@ export default function App() {
   const hydrated = useAppStore(state => state.hydrated);
   const hydrate = useAppStore(state => state.hydrate);
   const theme = useAppStore(state => state.settings.theme);
+  const checkForUpdates = useAppStore(state => state.checkForUpdates);
   const dark = theme === 'dark';
 
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  // One cold-start check after hydration; Settings can re-run it on demand.
+  useEffect(() => {
+    if (hydrated) {
+      void checkForUpdates();
+    }
+  }, [hydrated, checkForUpdates]);
 
   if (!hydrated) {
     return (
@@ -112,28 +122,31 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
-      <StatusBar barStyle={dark ? 'light-content' : 'dark-content'} />
-      <MotionProvider>
-        <View style={{ flex: 1, backgroundColor: color.ink }}>
-          <NavigationContainer key={theme} theme={buildNavTheme()}>
-            <Tab.Navigator
-              screenOptions={{
-                headerShown: false,
-                sceneStyle: { backgroundColor: color.ink },
-                animation: 'shift',
-              }}
-              tabBar={renderGlassTabBar}
-            >
-              <Tab.Screen name="Chat" component={ChatScreen} />
-              <Tab.Screen name="Train" component={SessionScreen} />
-              <Tab.Screen name="Log" component={LogNavigator} />
-              <Tab.Screen name="Routines" component={RoutineNavigator} />
-              <Tab.Screen name="Settings" component={SettingsScreen} />
-            </Tab.Navigator>
-          </NavigationContainer>
-        </View>
-      </MotionProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <StatusBar barStyle={dark ? 'light-content' : 'dark-content'} />
+        <MotionProvider>
+          <View style={{ flex: 1, backgroundColor: color.ink }}>
+            <NavigationContainer key={theme} theme={buildNavTheme()}>
+              <Tab.Navigator
+                screenOptions={{
+                  headerShown: false,
+                  sceneStyle: { backgroundColor: color.ink },
+                  animation: 'shift',
+                }}
+                tabBar={renderGlassTabBar}
+              >
+                <Tab.Screen name="Chat" component={ChatScreen} />
+                <Tab.Screen name="Train" component={SessionScreen} />
+                <Tab.Screen name="Log" component={LogNavigator} />
+                <Tab.Screen name="Routines" component={RoutineNavigator} />
+                <Tab.Screen name="Settings" component={SettingsScreen} />
+              </Tab.Navigator>
+            </NavigationContainer>
+            <UpdateSheet />
+          </View>
+        </MotionProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

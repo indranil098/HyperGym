@@ -22,6 +22,8 @@ import { sessionToDay } from '../lib/session';
 import { uid } from '../lib/id';
 import { DEFAULT_MODEL, MODELS } from '../ai/models';
 import { applyTheme } from '../theme';
+import { APP_VERSION } from '../releaseInfo';
+import { fetchLatestRelease, isNewerTag, type ReleaseInfo } from '../lib/releases';
 
 export const DEFAULT_SETTINGS: Settings = {
   apiKey: '',
@@ -61,6 +63,7 @@ const saveRest = createSaver(KEYS.rest, 200);
 const saveStopwatch = createSaver(KEYS.stopwatch, 200);
 const saveRoutines = createSaver(KEYS.routines);
 const saveSettings = createSaver(KEYS.settings);
+const saveUpdate = createSaver(KEYS.update);
 
 function forStorage(chat: ChatMessage[]): ChatMessage[] {
   return chat.slice(-CHAT_LIMIT).map(message =>
@@ -108,6 +111,18 @@ type State = {
   stopwatch: Stopwatch | null;
   /** Focused tab name, used to suppress the rest dock on the session screen. */
   activeTab: string;
+  update: UpdateState;
+};
+
+export type UpdateStatus = 'idle' | 'checking' | 'error' | 'current' | 'available';
+
+type UpdateState = {
+  /** A published release newer than this build, unless the user skipped it. */
+  available: ReleaseInfo | null;
+  skippedVersion: string;
+  sheetOpen: boolean;
+  status: UpdateStatus;
+  error: string | null;
 };
 
 const DEFAULT_REST_SEC = 90;
@@ -148,6 +163,9 @@ type Actions = {
   stopStopwatch: () => void;
   setActiveTab: (name: string) => void;
   markAuraDone: (threadId: string) => void;
+  checkForUpdates: () => Promise<void>;
+  skipUpdate: () => void;
+  setUpdateSheet: (open: boolean) => void;
   wipe: () => Promise<void>;
 };
 
@@ -176,9 +194,10 @@ export const useAppStore = create<State & Actions>()((set, get) => {
     rest: null,
     stopwatch: null,
     activeTab: 'Chat',
+    update: { available: null, skippedVersion: '', sheetOpen: false, status: 'idle', error: null },
 
     hydrate: async () => {
-      const [days, chat, storedThreads, storedActive, routines, settings, session, rest, stopwatch] =
+      const [days, chat, storedThreads, storedActive, routines, settings, session, rest, stopwatch, update] =
         await Promise.all([
           loadJSON<Record<string, WorkoutDay>>(KEYS.days, {}),
           loadJSON<ChatMessage[]>(KEYS.chat, []),
@@ -189,6 +208,7 @@ export const useAppStore = create<State & Actions>()((set, get) => {
           loadJSON<ActiveSession | null>(KEYS.session, null),
           loadJSON<Rest | null>(KEYS.rest, null),
           loadJSON<Stopwatch | null>(KEYS.stopwatch, null),
+          loadJSON<{ skippedVersion?: string }>(KEYS.update, {}),
         ]);
       const merged = { ...DEFAULT_SETTINGS, ...settings };
       if (!MODELS.some(model => model.id === merged.model)) {
@@ -223,6 +243,10 @@ export const useAppStore = create<State & Actions>()((set, get) => {
         session: session ?? null,
         rest: rest ?? null,
         stopwatch: stopwatch ?? null,
+        update: {
+          ...get().update,
+          skippedVersion: update.skippedVersion ?? '',
+        },
         hydrated: true,
       });
       saveThreads(forStorageThreads(threads));
@@ -789,6 +813,47 @@ export const useAppStore = create<State & Actions>()((set, get) => {
       );
       set({ threads });
       saveThreads(forStorageThreads(threads));
+    },
+
+    checkForUpdates: async () => {
+      const current = get().update;
+      if (current.status === 'checking') {
+        return;
+      }
+      set({ update: { ...current, status: 'checking', error: null } });
+      const latest = await fetchLatestRelease();
+      if (!latest) {
+        set({
+          update: { ...get().update, status: 'error', error: 'Could not reach GitHub releases.' },
+        });
+        return;
+      }
+      const newer = isNewerTag(latest.tag, `v${APP_VERSION}`);
+      const skipped = latest.version === get().update.skippedVersion;
+      set({
+        update: {
+          ...get().update,
+          available: newer && !skipped ? latest : null,
+          status: 'available',
+          error: null,
+        },
+      });
+    },
+
+    skipUpdate: () => {
+      const { update } = get();
+      if (!update.available) {
+        return;
+      }
+      const skippedVersion = update.available.version;
+      set({
+        update: { ...update, available: null, skippedVersion, sheetOpen: false, status: 'current' },
+      });
+      saveUpdate({ skippedVersion });
+    },
+
+    setUpdateSheet: open => {
+      set({ update: { ...get().update, sheetOpen: open } });
     },
 
     wipe: async () => {

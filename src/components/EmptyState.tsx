@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode } from 'react';
-import { Animated, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import type { LucideProps } from 'lucide-react-native';
 import { color, space, type } from '../theme';
 import { useEntrance } from '../lib/motion';
