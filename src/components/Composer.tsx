@@ -79,9 +79,6 @@ export function Composer({ onSend, busy, onStop, status }: Props) {
   return (
     <View
       style={{
-        borderTopWidth: 1,
-        borderColor: color.lineSoft,
-        backgroundColor: color.ink,
         paddingHorizontal: layout.gutter,
         paddingTop: space.xs,
         paddingBottom: space.xs,
@@ -134,16 +131,26 @@ export function Composer({ onSend, busy, onStop, status }: Props) {
         <Text style={[type.micro, { paddingBottom: space.xxs }]}>{status}</Text>
       ) : null}
 
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.xs }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'flex-end',
+          gap: space.xxs,
+          backgroundColor: color.ink1,
+          borderRadius: radius.pill,
+          paddingHorizontal: space.xs,
+          paddingVertical: space.xxs,
+        }}
+      >
         <Tap
           onPress={() => {
             tap();
             setSheetOpen(true);
           }}
           accessibilityLabel="Add a photo"
-          style={{ width: 56, height: 56 }}
+          style={{ width: 48, height: 48 }}
         >
-          <Icon icon={PhotoIcon} size={30} tone="dim" />
+          <Icon icon={PhotoIcon} size={26} tone="dim" />
         </Tap>
 
         <TextInput
@@ -157,11 +164,11 @@ export function Composer({ onSend, busy, onStop, status }: Props) {
             type.body,
             {
               flex: 1,
-              minHeight: 56,
+              minHeight: 48,
               maxHeight: 132,
-              paddingTop: space.md,
-              paddingBottom: space.md,
-              paddingHorizontal: space.xs,
+              paddingTop: space.sm,
+              paddingBottom: space.sm,
+              paddingHorizontal: space.xxs,
             },
           ]}
         />
@@ -171,8 +178,8 @@ export function Composer({ onSend, busy, onStop, status }: Props) {
           disabled={!busy && !canSend}
           accessibilityLabel={busy ? 'Stop' : 'Send'}
           style={{
-            width: 56,
-            height: 56,
+            width: 48,
+            height: 48,
             borderRadius: radius.pill,
             backgroundColor: busy ? color.ink2 : canSend ? color.volt : color.ink2,
           }}
@@ -182,7 +189,7 @@ export function Composer({ onSend, busy, onStop, status }: Props) {
               style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: color.paper }}
             />
           ) : (
-            <Icon icon={ArrowUpIcon} size={28} tone={canSend ? 'ink' : 'faint'} />
+            <Icon icon={ArrowUpIcon} size={26} tone={canSend ? 'ink' : 'faint'} />
           )}
         </Tap>
       </View>
