@@ -1,5 +1,5 @@
 import { dayKey, fromKey } from './date';
-import { daySets, dayVolume, exerciseKey as makeKey, lastPerformance } from './stats';
+import { daySets, dayVolume, exerciseKey as makeKey, groupDigits, lastPerformance } from './stats';
 import type { WorkoutDay } from '../types';
 
 const DAY_MS = 86400000;
@@ -79,6 +79,7 @@ export function nextTarget(
   days: Record<string, WorkoutDay>,
   key: string,
   before?: string,
+  unit: 'kg' | 'lb' = 'kg',
 ): { headline: string; weightKg?: number; reps?: number } | null {
   const last = lastPerformance(Object.values(days), key, before);
   if (!last) {
@@ -94,8 +95,9 @@ export function nextTarget(
     // Same weight, one more rep, until a rep-max is reached — then load.
     const reps = bestReps >= 8 ? bestReps : bestReps + 1;
     const weightKg = bestReps >= 8 ? Math.round((heaviest + 2.5) * 2) / 2 : heaviest;
+    const shownLast = unit === 'kg' ? heaviest : heaviest / 0.45359237;
     return {
-      headline: `beat ${heaviest} kg × ${bestReps}`,
+      headline: `beat ${groupDigits(shownLast, 1)} ${unit} × ${bestReps}`,
       weightKg,
       reps,
     };

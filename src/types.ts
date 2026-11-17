@@ -137,7 +137,7 @@ export type Thread = {
   auraAt?: number;
 };
 
-export type SessionSet = SetEntry & { done: boolean; at: number };
+export type SessionSet = SetEntry & { id: string; done: boolean; at: number };
 
 export type SessionExercise = {
   id: string;

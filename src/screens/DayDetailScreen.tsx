@@ -31,6 +31,14 @@ export function DayDetailScreen() {
     return (
       <SafeAreaView edges={['bottom']} style={{ flex: 1, backgroundColor: color.ink, padding: layout.gutter }}>
         <Text style={type.body}>That session is gone.</Text>
+        <Tap
+          minSize={0}
+          onPress={() => navigation.goBack()}
+          accessibilityLabel="Go back to the log"
+          style={{ marginTop: space.md, alignSelf: 'flex-start' }}
+        >
+          <Text style={[type.bodyStrong, { color: color.volt }]}>Back to log</Text>
+        </Tap>
       </SafeAreaView>
     );
   }

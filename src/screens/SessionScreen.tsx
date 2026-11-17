@@ -1,13 +1,15 @@
-import { useState } from 'react';
-import { ScrollView, Text, TextInput, View } from 'react-native';
+import { useState, useMemo } from 'react';
+import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
 import { color, layout, radius, space, type } from '../theme';
 import { useAppStore } from '../store/useAppStore';
 import { sessionElapsedSec, sessionSetCount, sessionVolume } from '../lib/session';
 import { nextTarget } from '../lib/insights';
-import { groupDigits, setLabel } from '../lib/stats';
+import { groupDigits, hasValue, setLabel, KG_PER_LB, trackedExercises } from '../lib/stats';
+import { suggestExercises } from '../lib/exerciseCatalog';
+import { countLabel, dayLabel } from '../lib/date';
 import { tap } from '../lib/feedback';
+import type { Receipt } from '../types';
 import { useTicker } from '../hooks/useTicker';
 import { Glass } from '../components/Glass';
 import { RestTimer } from '../components/RestTimer';
@@ -37,21 +39,29 @@ export function SessionScreen() {
   const unit = useAppStore(state => state.settings.unit);
   const days = useAppStore(state => state.days);
   const startSession = useAppStore(state => state.startSession);
-  const addSessionExercise = useAppStore(state => state.addSessionExercise);
+  const addSessionExerciseFromHistory = useAppStore(state => state.addSessionExerciseFromHistory);
   const removeSessionExercise = useAppStore(state => state.removeSessionExercise);
   const removeSessionSet = useAppStore(state => state.removeSessionSet);
   const logSessionSet = useAppStore(state => state.logSessionSet);
   const updateSessionSet = useAppStore(state => state.updateSessionSet);
   const finishSession = useAppStore(state => state.finishSession);
   const cancelSession = useAppStore(state => state.cancelSession);
-  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const [showStopwatch, setShowStopwatch] = useState(false);
   const [draftName, setDraftName] = useState('');
+  const [summary, setSummary] = useState<Receipt | null>(null);
 
-  const live = Boolean(session);
-  const tick = useTicker(live, 500);
+  const tick = useTicker(Boolean(session), 500);
   const elapsed = session ? sessionElapsedSec(session, tick) : 0;
+
+  const suggestions = useMemo(
+    () =>
+      suggestExercises(
+        draftName,
+        trackedExercises(Object.values(days)).map(item => ({ name: item.name, key: item.key })),
+      ),
+    [draftName, days],
+  );
 
   const volume = session ? sessionVolume(session) : 0;
   const sets = session ? sessionSetCount(session) : 0;
@@ -64,9 +74,12 @@ export function SessionScreen() {
   const finish = () => {
     tap();
     const receipt = finishSession();
-    if (receipt) {
-      navigation.goBack();
+    if (!receipt) {
+      return;
     }
+    // Train is a tab root, so there is nothing to go back to. Surface the
+    // result inline instead of silently dropping it.
+    setSummary(receipt);
   };
 
   if (!session) {
@@ -79,6 +92,29 @@ export function SessionScreen() {
             paddingBottom: space.xxxl + layout.tabBarHeight,
           }}
         >
+          {summary ? (
+            <Glass radius={32} intensity="mid" style={{ marginBottom: space.md, padding: layout.cardPad }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs, marginBottom: space.xs }}>
+                <Icon icon={CheckIcon} size={22} tone="volt" />
+                <Text style={[type.bodyStrong, { flex: 1, fontSize: 18 }]}>Session logged</Text>
+              </View>
+              <Text style={type.compact}>
+                {dayLabel(summary.dayKey)} · {countLabel(summary.exerciseCount, 'exercise')},{' '}
+                {countLabel(summary.setCount, 'set')},{' '}
+                {groupDigits(unit === 'kg' ? summary.volume : summary.volume / KG_PER_LB)} {unit}
+              </Text>
+              {(summary.prs ?? []).length > 0 ? (
+                <View style={{ marginTop: space.sm, gap: space.xxs }}>
+                  {(summary.prs ?? []).map(pr => (
+                    <Text key={`${pr.name}-${pr.value}`} style={[type.compact, { color: color.volt }]}>
+                      New PR {pr.name} {groupDigits(unit === 'kg' ? pr.value : pr.value / KG_PER_LB, 1)} {unit}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+            </Glass>
+          ) : null}
+
           <Glass radius={32} intensity="mid" style={{ padding: layout.cardPad, alignItems: 'center' }}>
             <Text style={[type.title, { textAlign: 'center' }]}>No session running</Text>
             <Text style={[type.compact, { textAlign: 'center', marginTop: space.xs }]}>
@@ -151,7 +187,7 @@ export function SessionScreen() {
         ) : null}
 
         {session.exercises.map(exercise => {
-          const target = nextTarget(days, exercise.exerciseKey, undefined);
+          const target = nextTarget(days, exercise.exerciseKey, undefined, unit);
           const doneCount = exercise.sets.filter(set => set.done).length;
           return (
             <Glass key={exercise.id} radius={radius.card} intensity="mid" style={{ marginBottom: space.md }}>
@@ -166,7 +202,19 @@ export function SessionScreen() {
                   <Tap
                     minSize={0}
                     hitSlop={8}
-                    onPress={() => removeSessionExercise(exercise.id)}
+                    onPress={() => {
+                      const logged = exercise.sets.filter(set => set.done && hasValue(set)).length;
+                      Alert.alert(
+                        `Remove ${exercise.name || 'exercise'}?`,
+                        logged > 0
+                          ? `${logged} logged ${logged === 1 ? 'set' : 'sets'} go with it.`
+                          : 'Nothing logged on it yet.',
+                        [
+                          { text: 'Keep', style: 'cancel' },
+                          { text: 'Remove', style: 'destructive', onPress: () => removeSessionExercise(exercise.id) },
+                        ],
+                      );
+                    }}
                     accessibilityLabel={`Remove ${exercise.name}`}
                     style={{ width: 32, height: 40 }}
                   >
@@ -181,7 +229,7 @@ export function SessionScreen() {
                 <View style={{ marginTop: space.sm, gap: space.xxs }}>
                   {exercise.sets.map((entry, index) => (
                     <View
-                      key={index}
+                      key={entry.id}
                       style={{
                         paddingVertical: space.xxs,
                         borderBottomWidth: 1,
@@ -194,20 +242,20 @@ export function SessionScreen() {
                           compact
                           value={entry.weightKg}
                           onChange={value =>
-                            updateSessionSet(exercise.id, index, { weightKg: value })
+                            updateSessionSet(exercise.id, entry.id, { weightKg: value })
                           }
                           accessibilityLabel={`${exercise.name} set ${index + 1} weight`}
                         />
                         <NumericStepper
                           compact
                           value={entry.reps}
-                          onChange={value => updateSessionSet(exercise.id, index, { reps: value })}
+                          onChange={value => updateSessionSet(exercise.id, entry.id, { reps: value })}
                           accessibilityLabel={`${exercise.name} set ${index + 1} reps`}
                         />
                         <Tap
                           minSize={0}
                           hitSlop={8}
-                          onPress={() => removeSessionSet(exercise.id, index)}
+                          onPress={() => removeSessionSet(exercise.id, entry.id)}
                           accessibilityLabel={`Remove set ${index + 1}`}
                           style={{ width: 28, height: 40 }}
                         >
@@ -273,13 +321,14 @@ export function SessionScreen() {
               onChangeText={setDraftName}
               placeholder="Add an exercise"
               placeholderTextColor={color.paperFaint}
+              autoCapitalize="words"
               accessibilityLabel="New exercise name"
               style={[type.body, { flex: 1, paddingVertical: space.sm }]}
               onSubmitEditing={() => {
                 if (!draftName.trim()) {
                   return;
                 }
-                addSessionExercise(draftName);
+                addSessionExerciseFromHistory(draftName);
                 setDraftName('');
               }}
             />
@@ -290,7 +339,7 @@ export function SessionScreen() {
                   return;
                 }
                 tap();
-                addSessionExercise(draftName);
+                addSessionExerciseFromHistory(draftName);
                 setDraftName('');
               }}
               accessibilityLabel="Add exercise"
@@ -306,6 +355,37 @@ export function SessionScreen() {
               <Icon icon={PlusIcon} size={22} tone="volt" />
             </Tap>
           </View>
+
+          {suggestions.length > 0 ? (
+            <View style={{ paddingHorizontal: layout.cardPad, paddingBottom: layout.cardPad, gap: space.xxs }}>
+              {suggestions.map(suggestion => (
+                <Tap
+                  key={suggestion.name}
+                  minSize={0}
+                  onPress={() => {
+                    tap();
+                    addSessionExerciseFromHistory(suggestion.name);
+                    setDraftName('');
+                  }}
+                  accessibilityLabel={`Add ${suggestion.name}`}
+                  style={{
+                    minHeight: 46,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: space.xs,
+                    paddingHorizontal: space.sm,
+                    borderRadius: radius.row,
+                    backgroundColor: color.ink2,
+                  }}
+                >
+                  <Text style={[type.bodyStrong, { flex: 1, fontSize: 15 }]} numberOfLines={1}>
+                    {suggestion.name}
+                  </Text>
+                  <Text style={type.micro}>{suggestion.group}</Text>
+                </Tap>
+              ))}
+            </View>
+          ) : null}
         </Glass>
 
         <View style={{ flexDirection: 'row', gap: space.sm, paddingBottom: insets.bottom }}>
@@ -313,7 +393,14 @@ export function SessionScreen() {
             minSize={0}
             onPress={() => {
               tap();
-              cancelSession();
+              Alert.alert(
+                'Discard this session?',
+                `${sets} logged ${sets === 1 ? 'set' : 'sets'} and ${groupDigits(unit === 'kg' ? volume : volume / 0.45359237)} ${unit} are lost.`,
+                [
+                  { text: 'Keep', style: 'cancel' },
+                  { text: 'Discard', style: 'destructive', onPress: cancelSession },
+                ],
+              );
             }}
             accessibilityLabel="Discard session"
             style={{

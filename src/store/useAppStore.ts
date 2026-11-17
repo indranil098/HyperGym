@@ -8,6 +8,7 @@ import type {
   Rest,
   Routine,
   SessionExercise,
+  SessionSet,
   SetEntry,
   Settings,
   Stopwatch,
@@ -16,7 +17,7 @@ import type {
 } from '../types';
 import { KEYS, clearAll, createSaver, loadJSON } from '../lib/storage';
 import { dayKey } from '../lib/date';
-import { entryBestE1rm, entryVolume, exerciseKey, hasValue, meaningfulSets, personalRecord } from '../lib/stats';
+import { entryBestE1rm, entryVolume, exerciseKey, hasValue, lastPerformance, meaningfulSets, personalRecord } from '../lib/stats';
 import { sessionToDay } from '../lib/session';
 import { uid } from '../lib/id';
 import { DEFAULT_MODEL, MODELS } from '../ai/models';
@@ -116,10 +117,11 @@ type Actions = {
   deleteRoutine: (id: string) => void;
   startSession: (seed?: SessionExercise[]) => void;
   addSessionExercise: (name: string, restSec?: number) => void;
+  addSessionExerciseFromHistory: (name: string) => void;
   removeSessionExercise: (id: string) => void;
   logSessionSet: (exerciseId: string, set: SetEntry, restSec?: number) => void;
-  updateSessionSet: (exerciseId: string, index: number, patch: Partial<SetEntry>) => void;
-  removeSessionSet: (exerciseId: string, index: number) => void;
+  updateSessionSet: (exerciseId: string, setId: string, patch: Partial<SetEntry>) => void;
+  removeSessionSet: (exerciseId: string, setId: string) => void;
   setSessionNotes: (notes: string) => void;
   finishSession: () => Receipt | null;
   cancelSession: () => void;
@@ -520,6 +522,44 @@ export const useAppStore = create<State & Actions>()((set, get) => {
       saveSession(next);
     },
 
+    addSessionExerciseFromHistory: name => {
+      const state = get();
+      if (!state.session) {
+        return;
+      }
+      const trimmed = name.trim();
+      if (!trimmed) {
+        return;
+      }
+      const key = exerciseKey(trimmed);
+      // Pre-fill from the last time this was trained, so the member confirms
+      // instead of retyping. Blank when it has never been logged.
+      const last = lastPerformance(Object.values(state.days), key, undefined);
+      const source = last?.entry.sets ?? [];
+      const seedSets: SessionSet[] = source.map(set => ({
+        ...set,
+        id: uid('t'),
+        done: false,
+        at: Date.now(),
+      }));
+
+      const next: ActiveSession = {
+        ...state.session,
+        exercises: [
+          ...state.session.exercises,
+          {
+            id: uid('x'),
+            name: trimmed,
+            exerciseKey: key,
+            sets: seedSets,
+            restSec: DEFAULT_REST_SEC,
+          },
+        ],
+      };
+      set({ session: next });
+      saveSession(next);
+    },
+
     removeSessionExercise: id => {
       const session = get().session;
       if (!session) {
@@ -553,7 +593,7 @@ export const useAppStore = create<State & Actions>()((set, get) => {
             ...exercise,
             sets: [
               ...exercise.sets.filter(entry => entry.done || hasValue(entry)),
-              { ...setEntry, done: true, at: now },
+              { ...setEntry, id: uid('t'), done: true, at: now },
             ],
           };
         }),
@@ -566,7 +606,7 @@ export const useAppStore = create<State & Actions>()((set, get) => {
       }
     },
 
-    updateSessionSet: (exerciseId, index, patch) => {
+    updateSessionSet: (exerciseId, setId, patch) => {
       const session = get().session;
       if (!session) {
         return;
@@ -577,8 +617,8 @@ export const useAppStore = create<State & Actions>()((set, get) => {
           exercise.id === exerciseId
             ? {
                 ...exercise,
-                sets: exercise.sets.map((entry, position) =>
-                  position === index ? { ...entry, ...patch } : entry,
+                sets: exercise.sets.map(entry =>
+                  entry.id === setId ? { ...entry, ...patch } : entry,
                 ),
               }
             : exercise,
@@ -588,7 +628,7 @@ export const useAppStore = create<State & Actions>()((set, get) => {
       saveSession(next);
     },
 
-    removeSessionSet: (exerciseId, index) => {
+    removeSessionSet: (exerciseId, setId) => {
       const session = get().session;
       if (!session) {
         return;
@@ -597,7 +637,7 @@ export const useAppStore = create<State & Actions>()((set, get) => {
         ...session,
         exercises: session.exercises.map(exercise =>
           exercise.id === exerciseId
-            ? { ...exercise, sets: exercise.sets.filter((_, position) => position !== index) }
+            ? { ...exercise, sets: exercise.sets.filter(entry => entry.id !== setId) }
             : exercise,
         ),
       };

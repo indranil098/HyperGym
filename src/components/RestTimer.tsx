@@ -11,6 +11,8 @@ import { Tap } from './Tap';
 type Props = {
   variant?: 'full' | 'compact';
   onComplete?: () => void;
+  /** Where a tap on the compact pill should navigate. */
+  onOpen?: () => void;
 };
 
 function clock(totalSec: number): string {
@@ -26,12 +28,14 @@ function clock(totalSec: number): string {
  * timestamp, so backgrounding the app or killing it mid-rest keeps the
  * countdown honest.
  */
-export function RestTimer({ variant = 'full', onComplete }: Props) {
+export function RestTimer({ variant = 'full', onComplete, onOpen }: Props) {
   const rest = useAppStore(state => state.rest);
   const skipRest = useAppStore(state => state.skipRest);
   const extendRest = useAppStore(state => state.extendRest);
 
-  const active = Boolean(rest);
+  // An expired rest is no longer counting anything, so the ticker must stop
+  // rather than re-rendering a static "GO" pill five times a second.
+  const active = Boolean(rest) && (rest?.endsAt ?? 0) > Date.now();
   const tick = useTicker(active, 200);
   const firedRef = useRef(false);
 
@@ -62,9 +66,16 @@ export function RestTimer({ variant = 'full', onComplete }: Props) {
         minSize={0}
         onPress={() => {
           tap();
-          onComplete?.();
+          if (done) {
+            // Expired rest otherwise lingers forever off the Train tab.
+            skipRest();
+          } else {
+            onOpen?.();
+          }
         }}
-        accessibilityLabel={`Rest ${clock(remaining)} remaining. Tap to open session.`}
+        accessibilityLabel={
+          done ? 'Rest finished. Tap to dismiss.' : `Rest ${clock(remaining)} remaining. Tap to open session.`
+        }
         style={{ borderRadius: 999, overflow: 'hidden' }}
       >
         <Glass radius={999} intensity="high" style={{ height: 46, justifyContent: 'center' }}>

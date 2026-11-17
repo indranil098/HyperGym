@@ -203,7 +203,7 @@ export function summarizeEntry(entry: LoggedExercise, unit: Unit): EntrySummary 
   };
 }
 
-export type MuscleGroup = 'Chest' | 'Back' | 'Legs' | 'Shoulders' | 'Arms' | 'Core' | 'Cardio';
+export type MuscleGroup = 'Chest' | 'Back' | 'Legs' | 'Shoulders' | 'Arms' | 'Core' | 'Cardio' | 'Other';
 
 const GROUP_RULES: { group: MuscleGroup; words: string[] }[] = [
   { group: 'Chest', words: ['bench', 'chest', 'fly', 'flye', 'pec', 'pushup', 'push up', 'dip'] },
@@ -212,7 +212,13 @@ const GROUP_RULES: { group: MuscleGroup; words: string[] }[] = [
   { group: 'Shoulders', words: ['press', 'shoulder', 'lateral', 'rear delt', 'ohp', 'shrug', 'raise'] },
   { group: 'Arms', words: ['curl', 'tricep', 'bicep', 'pushdown', 'skull', 'extension', 'forearm'] },
   { group: 'Core', words: ['plank', 'crunch', 'ab ', 'abs', 'sit up', 'leg raise', 'hollow'] },
-  { group: 'Cardio', words: ['run', 'bike', 'treadmill', 'elliptical', 'swim', 'jump rope', 'cardio', 'walk'] },
+  {
+    group: 'Cardio',
+    words: [
+      'run', 'bike', 'cycle', 'cycl', 'treadmill', 'elliptical', 'swim', 'jump rope',
+      'cardio', 'walk', 'row', 'rower', 'erg', 'stair', 'stepmill', 'hike', 'skipping',
+    ],
+  },
 ];
 
 export function muscleGroup(name: string): MuscleGroup {
@@ -222,7 +228,8 @@ export function muscleGroup(name: string): MuscleGroup {
       return rule.group;
     }
   }
-  return 'Chest';
+  // Unknown names are not chest work. Guessing a group mislabels volume.
+  return 'Other';
 }
 
 export type ExercisePoint = {

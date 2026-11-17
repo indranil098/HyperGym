@@ -1,5 +1,6 @@
 import { streak, weekSummary, nextTarget } from '../src/lib/insights';
 import { sessionToDay, sessionVolume, sessionSetCount } from '../src/lib/session';
+import { suggestExercises } from '../src/lib/exerciseCatalog';
 import type { ActiveSession, LoggedExercise, WorkoutDay } from '../src/types';
 
 function day(key: string, entries: LoggedExercise[]): WorkoutDay {
@@ -108,8 +109,8 @@ describe('sessionToDay', () => {
         exerciseKey: 'latpulldown',
         restSec: 90,
         sets: [
-          { weightKg: 55, reps: 10, done: true, at: 1 },
-          { weightKg: 55, reps: 10, done: false, at: 2 },
+          { id: 't1', weightKg: 55, reps: 10, done: true, at: 1 },
+          { id: 't2', weightKg: 55, reps: 10, done: false, at: 2 },
         ],
       },
       {
@@ -117,14 +118,14 @@ describe('sessionToDay', () => {
         name: '   ',
         exerciseKey: '',
         restSec: 90,
-        sets: [{ reps: 10, done: true, at: 3 }],
+        sets: [{ id: 't3', reps: 10, done: true, at: 3 }],
       },
       {
         id: 'x3',
         name: 'Treadmill walk',
         exerciseKey: 'treadmillwalk',
         restSec: 60,
-        sets: [{ durationSec: 600, done: true, at: 4 }],
+        sets: [{ id: 't4', durationSec: 600, done: true, at: 4 }],
       },
     ],
   };
@@ -153,5 +154,37 @@ describe('sessionToDay', () => {
     // x1 first set, x2 and x3 are confirmed; x1's second set is not.
     expect(sessionSetCount(base)).toBe(3);
     expect(sessionVolume(base)).toBe(550);
+  });
+});
+
+describe('suggestExercises', () => {
+  const history = [
+    { name: 'Lat pulldown', key: 'lat pulldown' },
+    { name: 'Cycling', key: 'cycling' },
+  ];
+
+  it('suggests catalog entries by prefix', () => {
+    const out = suggestExercises('Cyc', history);
+    expect(out.some(entry => entry.name === 'Cycling')).toBe(true);
+  });
+
+  it('ranks the member history above the catalog', () => {
+    const out = suggestExercises('Lat', history);
+    expect(out[0]?.name).toBe('Lat pulldown');
+  });
+
+  it('falls through to substring matches', () => {
+    const out = suggestExercises('pulldown', []);
+    expect(out.some(entry => entry.name === 'Lat pulldown')).toBe(true);
+  });
+
+  it('returns nothing for an empty query', () => {
+    expect(suggestExercises('', history)).toEqual([]);
+  });
+
+  it('dedupes history against the catalog', () => {
+    const out = suggestExercises('Cycling', history);
+    const names = out.map(entry => entry.name);
+    expect(names.filter(name => name === 'Cycling')).toHaveLength(1);
   });
 });

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, Text, View } from 'react-native';
+import { Animated, Keyboard, Pressable, Text, View } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { color, layout, radius, space, type } from '../theme';
 import { tap } from '../lib/feedback';
 import { useReduceMotion } from '../lib/motion';
 import { useAppStore } from '../store/useAppStore';
 import { Glass } from './Glass';
+import { RestTimer } from './RestTimer';
 import { Icon } from './Icon';
 import { ChatIcon, DumbbellIcon, ListIcon, SettingsIcon, StopwatchIcon } from './icons';
 
@@ -44,12 +45,22 @@ export function GlassTabBar({ state, navigation, insets }: BottomTabBarProps) {
   const sessionRunning = useAppStore(state => Boolean(state.session));
   const setActiveTab = useAppStore(state => state.setActiveTab);
   const focusedName = state.routes[state.index]?.name;
+  const [keyboard, setKeyboard] = useState(0);
 
   useEffect(() => {
     if (focusedName) {
       setActiveTab(focusedName);
     }
   }, [focusedName, setActiveTab]);
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', event => setKeyboard(event.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboard(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (reduce) {
@@ -80,6 +91,12 @@ export function GlassTabBar({ state, navigation, insets }: BottomTabBarProps) {
         backgroundColor: 'transparent',
       }}
     >
+      {/* Rest countdown rides above the pill on every tab but Train, where the
+          full ring is already on screen. Lives here because this component is
+          the one place with navigation context. */}
+      {focusedName !== 'Train' && keyboard <= 0 ? (
+        <RestTimer variant="compact" onOpen={() => navigation.navigate('Train')} />
+      ) : null}
       <Glass
         radius={BAR_HEIGHT / 2}
         intensity="high"

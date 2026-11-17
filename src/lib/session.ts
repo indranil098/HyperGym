@@ -45,7 +45,7 @@ export function sessionToDay(session: ActiveSession): WorkoutDay | null {
     const sets = meaningfulSets(
       exercise.sets
         .filter(set => set.done)
-        .map(({ done: _done, at: _at, ...rest }) => rest),
+        .map(({ id: _id, done: _done, at: _at, ...rest }) => rest),
     );
     if (sets.length === 0) {
       continue;

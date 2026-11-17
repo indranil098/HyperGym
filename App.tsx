@@ -3,12 +3,11 @@ import { StatusBar, Text, View } from 'react-native';
 import { DarkTheme, NavigationContainer, type Theme } from '@react-navigation/native';
 import { createBottomTabNavigator, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { color, layout, type } from './src/theme';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { color, type } from './src/theme';
 import { dayLabel } from './src/lib/date';
 import { useAppStore } from './src/store/useAppStore';
 import { MotionProvider } from './src/lib/motion';
-import { RestTimer } from './src/components/RestTimer';
 import type { LogStackParamList, RoutineStackParamList, TabParamList } from './src/nav';
 import { ChatScreen } from './src/screens/ChatScreen';
 import { SessionScreen } from './src/screens/SessionScreen';
@@ -24,31 +23,6 @@ const LogStack = createNativeStackNavigator<LogStackParamList>();
 const RoutineStack = createNativeStackNavigator<RoutineStackParamList>();
 
 const renderGlassTabBar = (props: BottomTabBarProps) => <GlassTabBar {...props} />;
-
-/** Compact rest pill that floats above the tab bar on every screen but Train,
- * where the full ring is already on screen. */
-function RestDock() {
-  const insets = useSafeAreaInsets();
-  const rest = useAppStore(state => state.rest);
-  const activeTab = useAppStore(state => state.activeTab);
-  if (!rest || activeTab === 'Train') {
-    return null;
-  }
-  return (
-    <View
-      pointerEvents="box-none"
-      style={{
-        position: 'absolute',
-        left: layout.gutter,
-        right: layout.gutter,
-        bottom: insets.bottom + layout.tabBarHeight - 26,
-        alignItems: 'center',
-      }}
-    >
-      <RestTimer variant="compact" />
-    </View>
-  );
-}
 
 function buildNavTheme(): Theme {
   return {
@@ -158,7 +132,6 @@ export default function App() {
               <Tab.Screen name="Settings" component={SettingsScreen} />
             </Tab.Navigator>
           </NavigationContainer>
-          <RestDock />
         </View>
       </MotionProvider>
     </SafeAreaProvider>

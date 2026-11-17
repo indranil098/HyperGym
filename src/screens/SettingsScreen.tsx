@@ -48,11 +48,17 @@ export function SettingsScreen() {
   const runCheck = async () => {
     setChecking(true);
     setCheck(null);
-    const result = await checkKey(keyDraft);
+    const submitted = keyDraft;
+    const result = await checkKey(submitted);
+    // A second check may have started while this one was in flight; only the
+    // newest result may update the field or persist a key.
+    if (submitted !== keyDraft) {
+      return;
+    }
     setCheck(result);
     setChecking(false);
     if (result.ok) {
-      updateSettings({ apiKey: keyDraft.trim() });
+      updateSettings({ apiKey: submitted.trim() });
     }
   };
 

@@ -233,7 +233,7 @@ export function DraftCard({ message, unit }: Props) {
           : undefined;
         const previousSummary = previous ? summarizeEntry(previous.entry, unit) : null;
         const target = exercise.exerciseKey
-          ? nextTarget(days, exercise.exerciseKey, draft.date)
+          ? nextTarget(days, exercise.exerciseKey, draft.date, unit)
           : null;
 
         return (

@@ -1,5 +1,5 @@
 import { useNavigation } from '@react-navigation/native';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { color, layout, space, surface, type } from '../theme';
@@ -17,13 +17,16 @@ import {
   dayVolume,
   groupDigits,
   summarizeEntry,
+  trackedExercises,
   weeklySetsByGroup,
 } from '../lib/stats';
+import { tap } from '../lib/feedback';
 import { exerciseKind } from '../lib/exerciseKind';
 import { streak, weekSummary } from '../lib/insights';
 import { useAppStore } from '../store/useAppStore';
 import type { LogNav } from '../nav';
 import { EmptyState } from '../components/EmptyState';
+import { BarChart } from '../components/BarChart';
 import { Icon } from '../components/Icon';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Tap } from '../components/Tap';
@@ -80,6 +83,36 @@ export function LogScreen() {
   const lastWeek = weekSummary(days, 1);
   const volumeDelta = thisWeek.volume - lastWeek.volume;
 
+  const volumeBars = useMemo(() => {
+    const today = new Date();
+    const out: { label: string; value: number; date: string; year: number; month: number }[] = [];
+    for (let weeksAgo = 7; weeksAgo >= 0; weeksAgo -= 1) {
+      const monday = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate() - ((today.getDay() + 6) % 7) - weeksAgo * 7,
+      );
+      const summary = weekSummary(days, weeksAgo, today);
+      out.push({
+        label: `${monday.getDate()}/${monday.getMonth() + 1}`,
+        value: summary.volume,
+        date: dayKey(monday),
+        year: monday.getFullYear(),
+        month: monday.getMonth(),
+      });
+    }
+    return out;
+  }, [days]);
+
+  const topExercises = useMemo(
+    () =>
+      trackedExercises(Object.values(days))
+        .slice()
+        .sort((a, b) => b.sessions - a.sessions)
+        .slice(0, 5),
+    [days],
+  );
+
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: color.ink }}>
       <ScreenHeader
@@ -117,6 +150,51 @@ export function LogScreen() {
                     )} ${unit} vs last week`
                 : ''}
             </Text>
+          </View>
+        ) : null}
+
+        {volumeBars.length > 0 ? (
+          <View style={[surface.card, { padding: layout.cardPad, marginBottom: space.lg }]}>
+            <Text style={[type.label, { marginBottom: space.xs }]}>Volume, last 8 weeks</Text>
+            <BarChart
+              bars={volumeBars}
+              accentIndex={volumeBars.length - 1}
+              formatValue={value => groupDigits(unit === 'kg' ? value : value / 0.45359237)}
+              onPressBar={index => {
+                tap();
+                const target = volumeBars[index];
+                if (target) {
+                  setSelected(target.date);
+                  setView({ year: target.year, month: target.month });
+                }
+              }}
+            />
+            <Text style={[type.micro, { marginTop: space.xs }]}>Tap a bar to open that week.</Text>
+          </View>
+        ) : null}
+
+        {topExercises.length > 0 ? (
+          <View style={[surface.card, { padding: layout.cardPad, marginBottom: space.lg }]}>
+            <Text style={[type.label, { marginBottom: space.xs }]}>Most trained</Text>
+            {topExercises.map((item, index) => (
+              <View
+                key={item.key}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'baseline',
+                  justifyContent: 'space-between',
+                  paddingVertical: space.xxs,
+                  borderTopWidth: index === 0 ? 0 : 1,
+                  borderColor: color.lineSoft,
+                }}
+              >
+                <Text style={type.body} numberOfLines={1}>
+                  {item.name}
+                </Text>
+                <Text style={type.numeralSm}>{item.sessions}</Text>
+              </View>
+            ))}
+            <Text style={[type.micro, { marginTop: space.xxs }]}>Sessions on record.</Text>
           </View>
         ) : null}
 
