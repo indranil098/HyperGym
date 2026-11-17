@@ -133,6 +133,8 @@ export type Thread = {
   at: number;
   updatedAt: number;
   messages: ChatMessage[];
+  /** When the intro aura completed. Set once, so it plays once per chat. */
+  auraAt?: number;
 };
 
 export type SessionSet = SetEntry & { done: boolean; at: number };

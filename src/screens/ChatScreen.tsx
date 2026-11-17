@@ -12,21 +12,15 @@ import { useAppStore } from '../store/useAppStore';
 import { useAgent } from '../agent/useAgent';
 import { MessageBubble } from '../components/MessageBubble';
 import { Composer } from '../components/Composer';
-import { EmptyState } from '../components/EmptyState';
-import { Chip } from '../components/Chip';
 import { Icon } from '../components/Icon';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Tap } from '../components/Tap';
-import { ChatIcon, CloseIcon, ErrorIcon, MenuIcon, PlusIcon } from '../components/icons';
+import { CloseIcon, ErrorIcon, MenuIcon, PlusIcon } from '../components/icons';
 import { ChatSidebar } from '../components/ChatSidebar';
+import { ChatAura } from '../components/ChatAura';
 import { useKeyboardInset } from '../lib/keyboard';
+import type { AuraPhase } from '../agent/useAgent';
 import { tap } from '../lib/feedback';
-
-const EXAMPLES = [
-  '4 sets bench at 80 kg, 8 reps',
-  'Rows, 4 sets, felt heavy',
-  'Squatted 100 for 5, 5, 5',
-];
 
 export function ChatScreen() {
   const chat = useAppStore(state => state.chat);
@@ -87,8 +81,15 @@ export function ChatScreen() {
     setSidebarOpen(false);
   }, [agent, newChat]);
 
+  // The aura is alive on a chat's opening exchange: idle until prompted, then
+  // sending -> thinking, and it sinks away once the reply lands.
+  const thread = threads.find(item => item.id === activeThreadId);
+  const freshChat = thread !== undefined && thread.auraAt === undefined && thread.messages.length === 0;
+  const auraPhase: AuraPhase = agent.auraPhase !== 'off' ? agent.auraPhase : freshChat ? 'idle' : 'off';
+
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: color.ink }}>
+      <ChatAura phase={auraPhase} />
       <ScreenHeader
         title="HyperGym"
         action={
@@ -153,15 +154,14 @@ export function ChatScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {chat.length === 0 ? (
-          <EmptyState
-            icon={ChatIcon}
-            title="Tell me what you did"
-            body="Text or a photo. I draft the workout, you fix what is wrong, and nothing is saved until you tap Log it."
-          >
-            {EXAMPLES.map(example => (
-              <Chip key={example} label={example} onPress={() => send(example)} />
-            ))}
-          </EmptyState>
+          <View style={{ flex: 1, justifyContent: 'flex-end', paddingBottom: space.xl }}>
+            <Text style={[type.title, { fontSize: 30, lineHeight: 36 }]}>
+              What did you train?
+            </Text>
+            <Text style={[type.compact, { marginTop: space.xs }]}>
+              Say it, or send a photo.
+            </Text>
+          </View>
         ) : (
           chat.map(message => (
             <MessageBubble

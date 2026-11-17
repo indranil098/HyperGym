@@ -186,11 +186,15 @@ function toWire(chat: ChatMessage[], days: Record<string, WorkoutDay>): WireMess
   return wire;
 }
 
+export type AuraPhase = 'off' | 'idle' | 'sending' | 'thinking' | 'settling';
+
 export type AgentState = {
   busy: boolean;
   status: string;
   error: string | null;
   activeModel: string;
+  /** Drives the animated intro gradient on the Chat page. */
+  auraPhase: AuraPhase;
   send: (text: string, images?: AttachedImage[]) => Promise<void>;
   cancel: () => void;
   clearError: () => void;
@@ -201,8 +205,20 @@ export function useAgent(): AgentState {
   const [status, setStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [activeModel, setActiveModel] = useState('');
+  const [auraPhase, setAuraPhase] = useState<AuraPhase>('off');
+  const auraRef = useRef(false);
   const cancelRef = useRef<(() => void) | null>(null);
   const cancelledRef = useRef(false);
+
+  /** Retire the aura: fade out, then stop rendering it for this chat. */
+  const settleAura = useCallback(() => {
+    if (!auraRef.current) {
+      return;
+    }
+    auraRef.current = false;
+    setAuraPhase('settling');
+    setTimeout(() => setAuraPhase('off'), 1900);
+  }, []);
 
   const cancel = useCallback(() => {
     cancelledRef.current = true;
@@ -210,48 +226,62 @@ export function useAgent(): AgentState {
     cancelRef.current = null;
     setBusy(false);
     setStatus('');
-  }, []);
+    settleAura();
+  }, [settleAura]);
 
   useEffect(() => () => cancelRef.current?.(), []);
 
-  const send = useCallback(async (text: string, images: AttachedImage[] = []) => {
-    const trimmed = text.trim();
-    if (!trimmed && images.length === 0) {
-      return;
-    }
+  const send = useCallback(
+    async (text: string, images: AttachedImage[] = []) => {
+      const trimmed = text.trim();
+      if (!trimmed && images.length === 0) {
+        return;
+      }
 
-    const settings = useAppStore.getState().settings;
-    if (!settings.apiKey) {
-      setError('Add your OpenRouter key in Settings first.');
-      return;
-    }
+      const settings = useAppStore.getState().settings;
+      if (!settings.apiKey) {
+        setError('Add your OpenRouter key in Settings first.');
+        return;
+      }
 
-    setError(null);
-    cancelledRef.current = false;
-    setBusy(true);
+      setError(null);
+      cancelledRef.current = false;
+      setBusy(true);
 
-    const store = useAppStore.getState();
-    store.addMessage({
-      id: uid('u'),
-      role: 'user',
-      text: trimmed,
-      images: images.map(image => `data:${image.mime};base64,${image.base64}`),
-      at: Date.now(),
-    });
+      const store = useAppStore.getState();
+      const activeThread = store.threads.find(thread => thread.id === store.activeThreadId);
+      // The aura belongs to a chat's opening exchange, and only plays once.
+      const auraEligible = !activeThread?.auraAt && (activeThread?.messages.length ?? 0) === 0;
+      if (auraEligible) {
+        auraRef.current = true;
+        setAuraPhase('sending');
+      }
 
-    const assistantId = uid('a');
-    useAppStore.getState().addMessage({
-      id: assistantId,
-      role: 'assistant',
-      kind: 'text',
-      text: '',
-      streaming: true,
-      at: Date.now(),
-    });
+      store.addMessage({
+        id: uid('u'),
+        role: 'user',
+        text: trimmed,
+        images: images.map(image => `data:${image.mime};base64,${image.base64}`),
+        at: Date.now(),
+      });
 
-    const snapshot = useAppStore.getState();
-    const wire = toWire(snapshot.chat, snapshot.days);
-    const chain = settings.autoFallback ? fallbackChain(settings.model) : [settings.model];
+      const assistantId = uid('a');
+      useAppStore.getState().addMessage({
+        id: assistantId,
+        role: 'assistant',
+        kind: 'text',
+        text: '',
+        streaming: true,
+        at: Date.now(),
+      });
+
+      if (auraEligible) {
+        setAuraPhase('thinking');
+      }
+
+      const snapshot = useAppStore.getState();
+      const wire = toWire(snapshot.chat, snapshot.days);
+      const chain = settings.autoFallback ? fallbackChain(settings.model) : [settings.model];
 
     let retriedNumberless = false;
 
@@ -422,6 +452,11 @@ export function useAgent(): AgentState {
         if (apply(result)) {
           setStatus('');
           setBusy(false);
+          if (auraRef.current) {
+            const threadId = useAppStore.getState().activeThreadId;
+            useAppStore.getState().markAuraDone(threadId);
+          }
+          settleAura();
           return;
         }
 
@@ -445,6 +480,7 @@ export function useAgent(): AgentState {
     setStatus('');
 
     if (cancelledRef.current) {
+      settleAura();
       return;
     }
 
@@ -456,11 +492,12 @@ export function useAgent(): AgentState {
         ? 'No model could read that. Try naming an exercise, or send a photo of the machine.'
         : friendlyError(lastError),
     );
-  }, []);
+    settleAura();
+  }, [settleAura]);
 
   const clearError = useCallback(() => setError(null), []);
 
-  return { busy, status, error, activeModel, send, cancel, clearError };
+  return { busy, status, error, activeModel, auraPhase, send, cancel, clearError };
 }
 
 export type { Clarification };

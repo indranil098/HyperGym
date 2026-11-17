@@ -129,6 +129,7 @@ type Actions = {
   startStopwatch: () => void;
   stopStopwatch: () => void;
   setActiveTab: (name: string) => void;
+  markAuraDone: (threadId: string) => void;
   wipe: () => Promise<void>;
 };
 
@@ -713,6 +714,16 @@ export const useAppStore = create<State & Actions>()((set, get) => {
       if (get().activeTab !== name) {
         set({ activeTab: name });
       }
+    },
+
+    markAuraDone: threadId => {
+      const threads = get().threads.map(thread =>
+        thread.id === threadId && thread.auraAt === undefined
+          ? { ...thread, auraAt: Date.now() }
+          : thread,
+      );
+      set({ threads });
+      saveThreads(forStorageThreads(threads));
     },
 
     wipe: async () => {

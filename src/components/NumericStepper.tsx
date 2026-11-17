@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 import { color, space, type } from '../theme';
 import { tap } from '../lib/feedback';
@@ -53,6 +53,10 @@ export function NumericStepper({
     }
   };
 
+  // Hold-to-repeat must die with the component, otherwise an interval that
+  // started on a set row keeps writing to the store after that row unmounts.
+  useEffect(() => clearTimers, []);
+
   const bump = (direction: number) => {
     const next = Math.max(0, (valueRef.current ?? 0) + direction * step);
     const rounded = Math.round(next * 10) / 10;
@@ -69,15 +73,28 @@ export function NumericStepper({
     }, 380);
   };
 
+  const beginEdit = () => {
+    // Seed the field with the current value. Committing an untouched edit must
+    // be a no-op, not a wipe.
+    setText(valueRef.current === undefined ? '' : `${valueRef.current}`);
+    setEditing(true);
+  };
+
   const commit = () => {
     setEditing(false);
     const parsed = Number.parseFloat(text.replace(',', '.').replace(/[^0-9.]/g, ''));
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      valueRef.current = undefined;
-      onChange(undefined);
+    if (text.trim() === '' || !Number.isFinite(parsed)) {
+      // Empty means "clear", but only when the user actually emptied it.
+      if (valueRef.current !== undefined) {
+        valueRef.current = undefined;
+        onChange(undefined);
+      }
       return;
     }
     const rounded = Math.round(parsed * 10) / 10;
+    if (rounded === valueRef.current) {
+      return;
+    }
     valueRef.current = rounded;
     onChange(rounded);
   };
@@ -127,7 +144,7 @@ export function NumericStepper({
           <Tap
             minSize={0}
             style={{ width: valueWidth, height: 44 }}
-            onPress={() => setEditing(true)}
+            onPress={beginEdit}
             accessibilityLabel={`${accessibilityLabel}, currently ${format(value)}. Tap to type.`}
           >
             <Text
