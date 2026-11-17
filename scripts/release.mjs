@@ -127,9 +127,13 @@ writeFileSync(notesFile, notes || `HyperGym ${tag}`);
 const namedApk = path.join(path.dirname(apkPath), `HyperGym-${version}.apk`);
 copyFileSync(apkPath, namedApk);
 
+// shell:true means node joins the args with spaces, so anything that can
+// contain a space (this checkout lives under "F:\gym App") needs quoting.
+const q = value => (/\s/.test(value) ? `"${value}"` : value);
+
 const create = spawnSync(
   'gh',
-  ['release', 'create', tag, namedApk, '--title', `HyperGym ${tag}`, '--notes-file', notesFile, '--target', sha],
+  ['release', 'create', tag, q(namedApk), '--title', q(`HyperGym ${tag}`), '--notes-file', q(notesFile), '--target', sha],
   { cwd: root, stdio: 'inherit', shell: true },
 );
 if (create.status !== 0) {
